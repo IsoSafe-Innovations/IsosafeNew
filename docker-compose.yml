@@ -1,0 +1,137 @@
+name: isosafe
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-isosafe}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-isosafe}
+      POSTGRES_DB: ${POSTGRES_DB:-isosafe}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-isosafe}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [isosafe]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [isosafe]
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: >
+      sh -c "alembic upgrade head &&
+      gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w $${API_WORKERS:-2} -b 0.0.0.0:8000 --timeout 120 --graceful-timeout 30"
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-isosafe}:${POSTGRES_PASSWORD:-isosafe}@postgres:5432/${POSTGRES_DB:-isosafe}
+      REDIS_URL: redis://redis:6379/0
+      ROLE: api
+    volumes:
+      - media:/data/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [isosafe]
+
+  inference:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.pipeline.runner"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-isosafe}:${POSTGRES_PASSWORD:-isosafe}@postgres:5432/${POSTGRES_DB:-isosafe}
+      REDIS_URL: redis://redis:6379/0
+      ROLE: pipeline
+    volumes:
+      - media:/data/media
+      - models:/data/models
+      - ./sample_videos:/data/sample_videos:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks: [isosafe]
+    # GPU passthrough (optional). Uncomment on nodes with NVIDIA container toolkit.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    networks: [isosafe]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+      - media:/data/media:ro
+    depends_on: [backend, frontend]
+    networks: [isosafe]
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    networks: [isosafe]
+
+  backup:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-isosafe}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-isosafe}
+      PGDATABASE: ${POSTGRES_DB:-isosafe}
+      BACKUP_RETENTION_DAYS: "14"
+    volumes:
+      - ./deploy/backup.sh:/backup.sh:ro
+      - ./deploy/backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [isosafe]
+
+volumes:
+  pgdata:
+  media:
+  models:
+  promdata:
+
+networks:
+  isosafe:
+    driver: bridge
