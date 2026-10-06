@@ -29,20 +29,22 @@ SELECT
   d.camera_id,
   date_trunc('hour', d.ts) AS bucket,
   COUNT(DISTINCT d.track_id) FILTER (WHERE d.object_type = 'person') AS footfall,
-  COALESCE(
-    (SELECT jsonb_object_agg(v.object_type, v.cnt) FROM (
+  COALESCE(veh.vehicles, '{}'::jsonb) AS vehicles,
+  COALESCE(q.avg_queue, 0),
+  COALESCE(q.max_queue, 0),
+  COALESCE(o.avg_occupancy, 0),
+  COALESCE(i.incident_count, 0)
+FROM detections d
+LEFT JOIN LATERAL (
+    SELECT jsonb_object_agg(v.object_type, v.cnt) AS vehicles FROM (
         SELECT d2.object_type, COUNT(DISTINCT d2.track_id) AS cnt
         FROM detections d2
         WHERE d2.camera_id = d.camera_id
           AND date_trunc('hour', d2.ts) = date_trunc('hour', d.ts)
           AND d2.object_type IN ('car','motorcycle','bus','truck')
         GROUP BY d2.object_type
-     ) v), '{}'::jsonb) AS vehicles,
-  COALESCE(q.avg_queue, 0),
-  COALESCE(q.max_queue, 0),
-  COALESCE(o.avg_occupancy, 0),
-  COALESCE(i.incident_count, 0)
-FROM detections d
+     ) v
+) veh ON true
 LEFT JOIN LATERAL (
     SELECT AVG(c)::real AS avg_queue, MAX(c)::int AS max_queue FROM (
       SELECT COUNT(*) AS c FROM detections dq

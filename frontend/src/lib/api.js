@@ -11,6 +11,11 @@ export function setTokens(access, refresh) {
   else localStorage.removeItem('isosafe_access');
   if (refresh) localStorage.setItem('isosafe_refresh', refresh);
   else localStorage.removeItem('isosafe_refresh');
+  window.dispatchEvent(new Event('isosafe:tokens-changed'));
+}
+
+export async function refreshAccessToken() {
+  return tryRefresh();
 }
 
 export function getAccessToken() {

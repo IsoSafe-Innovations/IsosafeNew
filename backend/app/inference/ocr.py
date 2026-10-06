@@ -16,20 +16,30 @@ PLATE_RE = re.compile(r"^[A-Z0-9]{4,10}$")
 DEDUP_SECONDS = 60.0
 
 _reader = None
+_reader_failed = False
 _lock = asyncio.Lock()
 
 
 def _get_reader():
-    global _reader
+    global _reader, _reader_failed
+    if _reader_failed:
+        return None
     if _reader is None:
         import easyocr
 
-        _reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+        try:
+            _reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+        except Exception:
+            log.exception("EasyOCR init failed — plate reading disabled")
+            _reader_failed = True
+            return None
     return _reader
 
 
 def _read_plate_sync(crop: np.ndarray, min_conf: float) -> tuple[str, float] | None:
     reader = _get_reader()
+    if reader is None:
+        return None
     try:
         results = reader.readtext(crop, allowlist=ALLOWLIST, detail=1)
     except Exception:

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getAccessToken } from '../lib/api';
+import { getAccessToken, refreshAccessToken } from '../lib/api';
 
 // Single shared WebSocket for the whole app. Components register listeners
 // and subscribe to camera frame streams; unsubscribed cameras only deliver
@@ -10,11 +10,27 @@ let listeners = new Set();
 let subscribed = new Set();
 let reconnectTimer = null;
 
+function scheduleReconnect(delayMs = 3000) {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, delayMs);
+}
+
 function connect() {
   const token = getAccessToken();
-  if (!token) return;
+  if (!token) {
+    scheduleReconnect();
+    return;
+  }
+  if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) {
+    return;
+  }
+
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
   socket = new WebSocket(`${proto}://${window.location.host}/api/ws?token=${token}`);
+
   socket.onopen = () => {
     if (subscribed.size) {
       socket.send(JSON.stringify({ action: 'set', camera_ids: [...subscribed] }));
@@ -25,11 +41,25 @@ function connect() {
     try { msg = JSON.parse(event.data); } catch { return; }
     listeners.forEach((fn) => fn(msg));
   };
-  socket.onclose = () => {
+  socket.onclose = async () => {
     socket = null;
-    reconnectTimer = setTimeout(connect, 3000);
+    await refreshAccessToken().catch(() => {});
+    scheduleReconnect();
   };
   socket.onerror = () => socket?.close();
+}
+
+export function resetWebSocket() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (socket) {
+    socket.onclose = null;
+    socket.close();
+    socket = null;
+  }
+  connect();
 }
 
 function ensureConnected() {
@@ -40,6 +70,10 @@ function syncSubscriptions() {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ action: 'set', camera_ids: [...subscribed] }));
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('isosafe:tokens-changed', resetWebSocket);
 }
 
 export function useWebSocket(onMessage) {

@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     upload_max_mb: int = Field(default=500, alias="UPLOAD_MAX_MB")
 
     # Resource guards
-    worker_memory_limit_mb: int = Field(default=2048, alias="WORKER_MEMORY_LIMIT_MB")
+    worker_memory_limit_mb: int = Field(default=4096, alias="WORKER_MEMORY_LIMIT_MB")
     disk_min_free_gb: float = Field(default=2.0, alias="DISK_MIN_FREE_GB")
 
     @property

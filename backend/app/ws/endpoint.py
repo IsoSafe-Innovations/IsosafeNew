@@ -18,6 +18,7 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query("")):
     try:
         payload = decode_token(token, expected_type="access")
     except pyjwt.PyJWTError:
+        await ws.accept()
         await ws.close(code=4401, reason="Invalid token")
         return
 
