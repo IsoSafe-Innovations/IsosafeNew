@@ -22,7 +22,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)
 
 async def main() -> None:
     pool = await get_asyncpg_pool()
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     start = now - dt.timedelta(days=7)
     span = (now - start).total_seconds()
 

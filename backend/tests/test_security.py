@@ -3,9 +3,15 @@ import pytest
 from cryptography.fernet import Fernet
 
 from app.config import get_settings
-from app.security import (create_token, decode_token, decrypt_source,
-                          encrypt_source, hash_password, redact_source,
-                          verify_password)
+from app.security import (
+    create_token,
+    decode_token,
+    decrypt_source,
+    encrypt_source,
+    hash_password,
+    redact_source,
+    verify_password,
+)
 
 
 def test_password_roundtrip():

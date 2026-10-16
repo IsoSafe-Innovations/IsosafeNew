@@ -1,0 +1,86 @@
+# Local single-box, plain-HTTP demo override.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+#   (do NOT also pass the cloud file; this file enables `inference` as the agent)
+#
+# Tailored for a shared dev box where :80/:9000/:9001 are taken:
+#   nginx  -> host :8080 (plain HTTP, /media 404s)
+#   minio  -> host :19000 (S3 API), :19001 (console)
+#   backend-> host :8000 (for curl/smoke tests)
+# The agent runs as the `inference` container, pulling config from the cloud and
+# pushing frames/incidents over the internal network (CLOUD_URL=http://backend:8000).
+# Set S3_PUBLIC_ENDPOINT_URL to this host's IP so presigned URLs work from both
+# the agent container and the browser.
+
+services:
+  prometheus:
+    profiles: ["off"]
+
+  backup:
+    profiles: ["off"]
+
+  nginx:
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - ./deploy/nginx.demo.conf:/etc/nginx/nginx.conf:ro
+      - media:/data/media:ro
+
+  backend:
+    ports:
+      - "8000:8000"
+    environment:
+      AGENT_MODE: "1"
+      AGENT_TOKEN: ${AGENT_TOKEN}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-isosafe-snapshots}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+
+  inference:
+    environment:
+      AGENT_MODE: "1"
+      AGENT_TOKEN: ${AGENT_TOKEN}
+      CLOUD_URL: http://backend:8000
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - "19000:9000"
+      - "19001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [isosafe]
+
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-isosafe-snapshots}
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 \"$$S3_ACCESS_KEY\" \"$$S3_SECRET_KEY\"; do sleep 1; done;
+      mc mb -p \"local/$$S3_BUCKET\" || true;
+      mc anonymous set none \"local/$$S3_BUCKET\" || true;
+      "
+    networks: [isosafe]
+
+volumes:
+  miniodata:

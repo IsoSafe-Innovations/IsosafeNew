@@ -1,28 +1,19 @@
 """Per-camera processing state: tracker, rule engine, zone tagging, OCR cadence,
 heatmap grid, and live count publishing."""
-import base64
-import json
 import logging
 import time
 
-import cv2
 import numpy as np
 
-from app.alerts.incidents import create_incident
 from app.config import get_settings
 from app.inference.ocr import DEDUP_SECONDS, read_plate
 from app.inference.tracker import CentroidTracker
 from app.inference.worker import VEHICLE_TYPES
 from app.inference.writer import DetectionWriter
 from app.metrics import FRAMES_PROCESSED
-from app.redis_client import (
-    COUNTS_KEY,
-    FRAME_CHANNEL,
-    HEATMAP_KEY_PREFIX,
-    get_redis,
-)
 from app.rules.engine import CameraRuleEngine
 from app.rules.zones import zones_containing
+from app.sinks.factory import get_frame_sink, get_incident_sink
 
 log = logging.getLogger(__name__)
 
@@ -47,8 +38,10 @@ class CameraProcessor:
         self.engine.update_config(zones, rules)
 
     def _publish_interval(self) -> float:
-        fps = get_settings().dashboard_max_fps
-        return 1.0 / min(max(fps, 2.0), 30.0)
+        settings = get_settings()
+        # Cloud demo caps the live uplink at AGENT_LIVE_FPS (default 2).
+        fps = settings.agent_live_fps if settings.agent_mode else settings.dashboard_max_fps
+        return 1.0 / min(max(fps, 1.0), 30.0)
 
     def _should_publish_frame(self) -> bool:
         now = time.time()
@@ -91,7 +84,8 @@ class CameraProcessor:
         fires = self.engine.evaluate(tracks, now=ts)
         for fire in fires:
             try:
-                await create_incident(self.camera_id, fire, image, ts)
+                sink = get_incident_sink()
+                await sink.send_incident(self.camera_id, fire, image, ts)
             except Exception:
                 log.exception("incident creation failed", extra={"camera_id": self.camera_id})
 
@@ -101,58 +95,26 @@ class CameraProcessor:
         # Live counts + frame publish
         await self._publish(image, tracks, ts)
 
-    async def publish_preview(self, image: np.ndarray, ts: float) -> None:
-        """Unannotated frame while inference runs; throttled with annotated publishes."""
-        if not self._should_publish_frame():
-            return
-        await self._send_frame(image, tracks=None, ts=ts)
-
     async def _send_frame(self, image: np.ndarray, tracks, ts: float) -> None:
-        settings = get_settings()
         in_frame: dict[str, int] = {}
         if tracks:
             for track in tracks:
                 in_frame[track.object_type] = in_frame.get(track.object_type, 0) + 1
-            out = self._annotate(image, tracks)
-        else:
-            out = image
-        h, w = out.shape[:2]
-        if max(h, w) > 960:
-            scale = 960 / max(h, w)
-            out = cv2.resize(out, (int(w * scale), int(h * scale)))
-        ok, buf = cv2.imencode(
-            ".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, settings.frame_jpeg_quality]
+        sink = get_frame_sink()
+        await sink.publish_frame(
+            self.camera_id,
+            image,
+            tracks,
+            ts,
+            counts=dict(self.tracker.session_counts),
+            in_frame=in_frame,
         )
-        if not ok:
-            return
-        message = {
-            "type": "frame",
-            "camera_id": self.camera_id,
-            "image": base64.b64encode(buf.tobytes()).decode(),
-            "counts": dict(self.tracker.session_counts),
-            "in_frame": in_frame,
-            "ts": ts,
-        }
-        await get_redis().publish(FRAME_CHANNEL, json.dumps(message))
 
     async def _update_heatmap(self, tracks) -> None:
-        r = get_redis()
-        key = HEATMAP_KEY_PREFIX + self.camera_id
-        pipe = r.pipeline(transaction=False)
-        touched = False
-        for track in tracks:
-            if track.object_type != "person":
-                continue
-            gx = min(HEATMAP_GRID - 1, max(0, int(track.centroid[0] * HEATMAP_GRID)))
-            gy = min(HEATMAP_GRID - 1, max(0, int(track.centroid[1] * HEATMAP_GRID)))
-            pipe.hincrby(key, f"{gx}:{gy}", 1)
-            touched = True
-        if touched:
-            pipe.expire(key, 7200)
-            await pipe.execute()
+        sink = get_frame_sink()
+        await sink.update_heatmap(self.camera_id, tracks)
 
     async def _publish(self, image: np.ndarray, tracks, ts: float) -> None:
-        settings = get_settings()
         in_frame: dict[str, int] = {}
         for track in tracks:
             in_frame[track.object_type] = in_frame.get(track.object_type, 0) + 1
@@ -162,36 +124,14 @@ class CameraProcessor:
             "session": dict(self.tracker.session_counts),
             "ts": ts,
         }
-        r = get_redis()
         now = time.time()
         if now - self._last_counts_flush >= 1.0:
             self._last_counts_flush = now
-            await r.hset(COUNTS_KEY, self.camera_id, json.dumps(counts))
+            sink = get_frame_sink()
+            await sink.update_counts(self.camera_id, counts)
 
-        # Live counts + annotated frame (RTSP/live sources only; file uses preview path)
-        if self.source_type == "file":
-            return
+        # Annotated live frame (all source types, including looping file demos),
+        # throttled to the dashboard/agent live FPS cap.
         if not self._should_publish_frame():
             return
         await self._send_frame(image, tracks, ts)
-
-    def _annotate(self, image: np.ndarray, tracks) -> np.ndarray:
-        out = image.copy()
-        h, w = out.shape[:2]
-        # keep publish size bounded
-        if max(h, w) > 960:
-            scale = 960 / max(h, w)
-            out = cv2.resize(out, (int(w * scale), int(h * scale)))
-            h, w = out.shape[:2]
-        for track in tracks:
-            b = track.bbox
-            color = (80, 200, 120) if track.object_type == "person" else (255, 180, 60)
-            pt1 = (int(b[0] * w), int(b[1] * h))
-            pt2 = (int(b[2] * w), int(b[3] * h))
-            cv2.rectangle(out, pt1, pt2, color, 2)
-            label = f"{track.object_type} #{track.track_id}"
-            if track.last_plate:
-                label += f" [{track.last_plate}]"
-            cv2.putText(out, label, (pt1[0], max(14, pt1[1] - 6)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-        return out

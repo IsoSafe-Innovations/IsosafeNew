@@ -20,7 +20,7 @@ async def camera_stats(
     hours: int = Query(24, ge=1, le=24 * 30),
     user: CurrentUser = Depends(require_viewer),
 ) -> dict:
-    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=hours)
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(hours=hours)
     engine = get_engine()
     async with engine.connect() as conn:
         if camera_id == "all":
@@ -85,7 +85,7 @@ async def heatmap(camera_id: str, user: CurrentUser = Depends(require_viewer)) -
 @router.get("/overview")
 async def overview(user: CurrentUser = Depends(require_viewer)) -> dict:
     """Dashboard KPIs for today, with deltas versus yesterday."""
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - dt.timedelta(days=1)
 

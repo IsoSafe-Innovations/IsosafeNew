@@ -4,7 +4,10 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     YOLO_CONFIG_DIR=/data/models
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Prefer IPv4 for apt: on IPv6-less Docker networks DNS returns AAAA records
+# only, and apt hangs on the unreachable IPv6 route instead of falling back.
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 \
+    && apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 ffmpeg postgresql-client curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -21,3 +24,9 @@ COPY . .
 RUN mkdir -p /data/media/snapshots /data/media/uploads /data/media/heatmaps /data/models
 
 EXPOSE 8000
+
+# This image is both the cloud API and the on-site agent. The default command is
+# the pipeline runner (agent, AGENT_MODE=1); the cloud `backend` and `inference`
+# services override it in docker-compose, so `docker run <image>` with agent env
+# works as a single-command install (see deploy/agent/README.md).
+CMD ["python", "-m", "app.pipeline.runner"]

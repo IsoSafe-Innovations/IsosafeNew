@@ -25,7 +25,7 @@ async def _fire_self_alert(description: str) -> None:
         "severity": "critical",
         "description": description,
         "snapshot_url": None,
-        "ts": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "ts": dt.datetime.now(dt.UTC).isoformat(),
     }
     await get_redis().publish(ALERT_CHANNEL, json.dumps(payload))
 
@@ -74,5 +74,5 @@ async def run_resource_guards(stop_event: asyncio.Event) -> None:
             log.exception("resource guard check failed")
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=CHECK_INTERVAL)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass

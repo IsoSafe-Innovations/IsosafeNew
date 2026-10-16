@@ -48,10 +48,9 @@ async def _gather(report_type: str, from_ts: dt.datetime, to_ts: dt.datetime) ->
 def _build_pdf(report_type: str, data: dict, from_ts, to_ts) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import cm
-    from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer, Table,
-                                    TableStyle)
     from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, title=REPORT_TYPES[report_type])
@@ -147,7 +146,7 @@ async def generate_report(
 ) -> StreamingResponse:
     if report_type not in REPORT_TYPES:
         raise HTTPException(status_code=404, detail=f"Unknown report type {report_type}")
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     defaults = {
         "daily_summary": 1, "weekly_security": 7, "monthly_business": 30,
         "incident_report": 7, "camera_health": 1,

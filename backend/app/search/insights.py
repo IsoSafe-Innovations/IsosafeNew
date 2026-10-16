@@ -22,7 +22,7 @@ Respond with ONLY a JSON array of objects: [{"title": "...", "detail": "...", "k
 
 
 async def _collect_context() -> dict:
-    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(hours=24)
     engine = get_engine()
     async with engine.connect() as conn:
         hourly = (
@@ -80,7 +80,7 @@ async def generate_insights() -> list[dict]:
         return []
 
     payload = {
-        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "generated_at": dt.datetime.now(dt.UTC).isoformat(),
         "insights": insights,
     }
     await get_redis().set(INSIGHTS_CACHE_KEY, json.dumps(payload), ex=86400)

@@ -10,10 +10,11 @@ import uuid
 import sqlalchemy as sa
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import (auth, cameras, detections, health, incidents, reports,
-                     search, stats, uploads, users)
+from app.agent.watchdog import run_agent_watchdog
+from app.api import agent, auth, cameras, detections, health, incidents, reports, search, stats, uploads, users
 from app.config import get_settings
 from app.db.engine import dispose, get_engine
 from app.db.tables import users as users_table
@@ -27,6 +28,73 @@ from app.ws.manager import manager as ws_manager
 log = logging.getLogger(__name__)
 
 INSIGHTS_INTERVAL = 3600
+
+
+class AgentBodyLimitMiddleware:
+    """Cap ``/agent/*`` request bodies at 1 MB (PRD v2 DEMO-FR-27).
+
+    A declared ``Content-Length`` is checked up front. Chunked uploads (no
+    ``Content-Length``) are measured as they stream and rejected the moment they
+    exceed the cap, so the body is never buffered past the limit. Requests under
+    the cap are buffered and replayed unchanged to the route.
+    """
+
+    def __init__(self, app, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http" or not scope.get("path", "").startswith("/agent/"):
+            await self.app(scope, receive, send)
+            return
+
+        content_length = None
+        for name, value in scope.get("headers", []):
+            if name == b"content-length":
+                content_length = value
+                break
+
+        if content_length is not None:
+            try:
+                too_big = int(content_length) > self.max_bytes
+            except ValueError:
+                too_big = True
+            if too_big:
+                await self._reject(scope, receive, send)
+                return
+            await self.app(scope, receive, send)
+            return
+
+        messages: list[dict] = []
+        total = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                messages.append(message)
+                break
+            total += len(message.get("body", b""))
+            if total > self.max_bytes:
+                await self._reject(scope, receive, send)
+                return
+            messages.append(message)
+            if not message.get("more_body", False):
+                break
+
+        index = 0
+
+        async def replay():
+            nonlocal index
+            if index < len(messages):
+                message = messages[index]
+                index += 1
+                return message
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await self.app(scope, replay, send)
+
+    async def _reject(self, scope, receive, send) -> None:
+        response = JSONResponse(status_code=413, content={"detail": "agent message exceeds 1 MB"})
+        await response(scope, receive, send)
 
 
 async def _bootstrap_admin() -> None:
@@ -60,7 +128,7 @@ async def _insights_loop(stop: asyncio.Event) -> None:
         try:
             await asyncio.wait_for(stop.wait(), timeout=INSIGHTS_INTERVAL)
             return
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         try:
             await generate_insights()
@@ -90,13 +158,18 @@ def create_app() -> FastAPI:
         response.headers["x-request-id"] = rid
         return response
 
-    for router in (auth.router, cameras.router, detections.router, incidents.router,
+    # The cloud drops any agent message > 1 MB before it is parsed (DEMO-FR-22/27).
+    app.add_middleware(AgentBodyLimitMiddleware, max_bytes=settings.agent_max_message_bytes)
+
+    for router in (agent.router, auth.router, cameras.router, detections.router, incidents.router,
                    stats.router, uploads.router, search.router, reports.router,
                    health.router, users.router, ws_endpoint.router):
         app.include_router(router)
 
-    # Snapshots/heatmaps served directly (nginx also serves these in production)
-    if os.path.isdir(settings.media_root):
+    # Snapshots/heatmaps served directly (nginx also serves these in production).
+    # In agent/cloud mode snapshots live in S3 behind presigned GETs, so the old
+    # public /media route must NOT be exposed on staging: it 404s by design.
+    if not settings.agent_mode and os.path.isdir(settings.media_root):
         app.mount("/media", StaticFiles(directory=settings.media_root), name="media")
 
     stop_event = asyncio.Event()
@@ -107,6 +180,8 @@ def create_app() -> FastAPI:
         await _bootstrap_admin()
         await ws_manager.start()
         background.append(asyncio.create_task(_insights_loop(stop_event)))
+        if settings.agent_mode:
+            background.append(asyncio.create_task(run_agent_watchdog(stop_event)))
         log.info("Iso Safe API started")
 
     @app.on_event("shutdown")

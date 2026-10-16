@@ -1,0 +1,52 @@
+# AWS override for the VM provisioned by infra/demo/. Layer it LAST:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cloud.yml \
+#                  -f docker-compose.aws.yml up -d --build
+#
+# What it changes vs. the local demo/cloud stacks:
+#   * Real S3 instead of the MinIO stand-in. Access is granted by the VM's
+#     IAM instance role (infra/demo/iam.tf), so no S3 keys are needed: leave
+#     S3_ENDPOINT_URL / S3_ACCESS_KEY / S3_SECRET_KEY empty and boto3 falls
+#     back to the instance metadata credentials.
+#   * MinIO and its bucket-init are disabled (local-dev only).
+#   * nginx serves the public TLS front door (deploy/nginx.cloud.conf) with
+#     certbot's certificates from ./deploy/certs and an ACME webroot at
+#     ./deploy/acme.
+#   * backend/frontend carry registry image names so the Day-7 deploy can
+#     `docker compose pull` the CI-built images (public GHCR packages). A local
+#     first_deploy overrides them with the defaults and builds in place.
+
+services:
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.cloud.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+      - ./deploy/acme:/var/www/acme
+
+  backend:
+    image: ${ISOSAFE_BACKEND_IMAGE:-isosafe-backend:local}
+    environment:
+      # Literal empty strings so the cloud.yml MinIO defaults cannot leak in:
+      # empty endpoint => default AWS endpoint; empty keys => IAM instance role.
+      S3_ENDPOINT_URL: ""
+      S3_PUBLIC_ENDPOINT_URL: ""
+      S3_ACCESS_KEY: ""
+      S3_SECRET_KEY: ""
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET to the bucket created by infra/demo}
+
+  frontend:
+    image: ${ISOSAFE_FRONTEND_IMAGE:-isosafe-frontend:local}
+    build:
+      context: ./frontend
+      args:
+        VITE_DEMO_MODE: "1"
+
+  minio:
+    profiles: ["off"]
+
+  minio-init:
+    profiles: ["off"]

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { usePolling } from '../hooks/usePolling.jsx';
 import { del, patch, post } from '../lib/api';
+import { DEMO_MODE } from '../lib/demo';
 import { fmtTime } from '../lib/format';
 
 export default function Admin() {
@@ -14,7 +15,7 @@ export default function Admin() {
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-white">Administration</h1>
       <UsersPanel />
-      <UploadPanel />
+      {!DEMO_MODE && <UploadPanel />}
       <HealthPanel />
     </div>
   );
@@ -143,6 +144,7 @@ function UploadPanel() {
 function HealthPanel() {
   const { data: health } = usePolling('/api/health', 15000);
   const { data: cameras } = usePolling('/api/cameras', 15000);
+  const agent = health?.agent;
 
   return (
     <section className="bg-surface-800 border border-surface-700 rounded-lg p-4">
@@ -153,7 +155,24 @@ function HealthPanel() {
         <Stat label="Redis" ok={health?.redis?.ok} />
         <Stat label="Cameras online"
               value={`${(cameras || []).filter((c) => c.health?.online).length}/${(cameras || []).length}`} />
+        {agent && <Stat label="Agent" ok={agent.online} />}
       </div>
+      {agent && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 mb-4">
+          <span>Version <span className="text-slate-300">{agent.agent_version || '—'}</span></span>
+          <span>
+            Last seen{' '}
+            <span className="text-slate-300">
+              {agent.last_seen_ago != null ? `${agent.last_seen_ago}s ago` : 'never'}
+            </span>
+          </span>
+          {agent.cpu != null && <span>CPU <span className="text-slate-300">{agent.cpu}%</span></span>}
+          {agent.mem != null && <span>Mem <span className="text-slate-300">{agent.mem}%</span></span>}
+          {agent.disk_free_gb != null && (
+            <span>Disk free <span className="text-slate-300">{agent.disk_free_gb} GB</span></span>
+          )}
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs uppercase text-slate-500 border-b border-surface-700">

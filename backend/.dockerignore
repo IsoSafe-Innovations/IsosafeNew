@@ -7,7 +7,6 @@ __pycache__/
 *.egg-info/
 .git/
 tests/
-scripts/
 *.pt
 *.mp4
 .env

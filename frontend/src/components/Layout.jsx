@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useLiveAlerts } from '../hooks/useWebSocket.jsx';
+import { DEMO_MODE, isHiddenInDemo } from '../lib/demo';
 import { SEVERITY_BG } from '../lib/format';
 
 const NAV = [
@@ -36,7 +37,7 @@ export default function Layout({ children }) {
           </div>
 
           <nav className="flex items-center gap-1 overflow-x-auto flex-1">
-            {NAV.filter((n) => !n.minRole || hasRole(n.minRole)).map(({ to, label, icon: Icon }) => (
+            {NAV.filter((n) => (!n.minRole || hasRole(n.minRole)) && !isHiddenInDemo(n.to)).map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -56,13 +57,15 @@ export default function Layout({ children }) {
           </nav>
 
           <div className="flex items-center gap-3 pl-4">
-            <button
-              onClick={() => navigate('/investigations')}
-              title="Forensic search"
-              className="text-slate-400 hover:text-white"
-            >
-              <SlidersHorizontal size={18} />
-            </button>
+            {!DEMO_MODE && (
+              <button
+                onClick={() => navigate('/investigations')}
+                title="Forensic search"
+                className="text-slate-400 hover:text-white"
+              >
+                <SlidersHorizontal size={18} />
+              </button>
+            )}
             <div className="relative">
               <button
                 onClick={() => setShowNotif((v) => !v)}

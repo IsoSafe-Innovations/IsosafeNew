@@ -13,8 +13,6 @@ Usage: python -m scripts.pipeline_e2e --video ..\\sample_videos\\vtest.avi --sec
 """
 import argparse
 import asyncio
-import datetime as dt
-import json
 import os
 import sys
 
@@ -32,10 +30,10 @@ async def main() -> None:
 
     from app.db.engine import dispose, get_engine
     from app.db.tables import cameras, detections, incidents
-    from app.pipeline.runner import Pipeline
-    from app.redis_client import FRAME_CHANNEL, get_redis
     from app.ingestion.health import read_all_health
     from app.logging_config import setup_logging
+    from app.pipeline.runner import Pipeline
+    from app.redis_client import FRAME_CHANNEL, get_redis
 
     setup_logging("WARNING")
     cam_id = "e2e-test-cam"

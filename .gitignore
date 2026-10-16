@@ -15,3 +15,6 @@ sample_videos/*.mov
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+*.db
+*.sqlite
+*.sqlite3

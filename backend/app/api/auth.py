@@ -1,10 +1,9 @@
 import logging
 
+import jwt as pyjwt
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-
-import jwt as pyjwt
 
 from app.api.deps import rate_limited
 from app.api.types import EmailAddress

@@ -1,0 +1,30 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#   terraform init
+#   terraform plan    # review
+#   terraform apply   # ~5-10 min: VM + S3 + IAM + EIP + DNS
+
+region = "eu-west-1"                    # DQ-01: region closest to the demo audience
+
+# Owner/dev SSH: one of the two is required.
+ssh_public_key   = "ssh-ed25519 AAAA... dev@laptop"   # recommended: creates a dedicated key pair
+# key_name        = "existing-keypair-name"
+
+# Owner/dev IPs only (PRD DEMO-FR-60). Never 0.0.0.0/0 for SSH.
+ssh_allowed_cidrs = ["203.0.113.10/32", "198.51.100.20/32"]
+
+domain_root = "isosafe.com"             # must exist in Route53 (or set hosted_zone_id)
+subdomain   = "demo"                    # -> https://demo.isosafe.com
+# hosted_zone_id = "Z0123456789ABCDEFGHIJ"   # optional explicit zone id
+
+# Globally unique bucket name (private, SSE, Block Public Access).
+bucket_name = "isosafe-demo-snapshots"
+
+instance_type   = "t3.small"
+enable_bucket_versioning = false
+termination_protection   = false
+
+# Monthly AWS cost budget + email alerts (DEMO-FR-65).
+budget_limit_usd   = 100
+budget_alert_email = "ops@isosafe.com"
