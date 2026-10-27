@@ -1,0 +1,116 @@
+name: Deploy (staging)
+
+# DEMO-FR-61: after CI passes on main, build (in CI) -> push registry -> SSH to
+# the demo VM -> docker compose pull -> up -d -> alembic upgrade head ->
+# scripts/smoke_api.py against staging.
+#
+# CI (ci.yml) builds and pushes ghcr.io/<repo>/{backend,frontend}:<sha>. This
+# workflow only deploys that sha, so ordering is guaranteed by workflow_run.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   DEPLOY_HOST          Elastic IP / hostname of the infra/demo VM
+#   DEPLOY_USER          ssh user (ubuntu)
+#   DEPLOY_SSH_KEY       private key whose public half Terraform installed
+#   STAGING_URL          https://demo.<domain>          (optional check)
+#   JWT_SECRET           runtime secret -> root-only .env on the VM
+#   CAMERA_SECRET_KEY    runtime secret -> root-only .env on the VM
+#   AGENT_TOKEN          runtime secret -> root-only .env on the VM
+#   POSTGRES_PASSWORD    runtime secret -> root-only .env on the VM
+#   SMOKE_ADMIN_EMAIL    admin login used by scripts/smoke_api.py
+#   SMOKE_ADMIN_PASSWORD admin login used by scripts/smoke_api.py
+# None of these are stored in the repo.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      APP_DIR: /opt/isosafe/app
+      COMPOSE_FILES: -f docker-compose.yml -f docker-compose.cloud.yml -f docker-compose.aws.yml
+    steps:
+      - name: Resolve deploy commit and image namespace
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "SHA=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_ENV"
+          else
+            echo "SHA=${{ github.sha }}" >> "$GITHUB_ENV"
+          fi
+          echo "IMAGE_NS=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          CAMERA_SECRET_KEY: ${{ secrets.CAMERA_SECRET_KEY }}
+          AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          SMOKE_ADMIN_EMAIL: ${{ secrets.SMOKE_ADMIN_EMAIL }}
+          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: "SHA,IMAGE_NS,APP_DIR,COMPOSE_FILES,JWT_SECRET,CAMERA_SECRET_KEY,AGENT_TOKEN,POSTGRES_PASSWORD,SMOKE_ADMIN_EMAIL,SMOKE_ADMIN_PASSWORD"
+          script_stop: true
+          script: |
+            set -e
+            cd "$APP_DIR"
+
+            # 1. Deploy exactly the commit CI built.
+            git fetch --depth 1 origin "$SHA"
+            git checkout -q "$SHA"
+
+            # 2. Runtime secrets -> root-only .env (only keys provided by
+            #    Actions are touched; first_deploy.sh values are kept otherwise).
+            umask 077
+            touch .env
+            sync_secret() {
+              key="$1"; val="$2"
+              [ -z "$val" ] && return 0
+              grep -v "^${key}=" .env > .env.tmp 2>/dev/null || true
+              printf '%s=%s\n' "$key" "$val" >> .env.tmp
+              mv .env.tmp .env
+            }
+            sync_secret JWT_SECRET "$JWT_SECRET"
+            sync_secret CAMERA_SECRET_KEY "$CAMERA_SECRET_KEY"
+            sync_secret AGENT_TOKEN "$AGENT_TOKEN"
+            sync_secret POSTGRES_PASSWORD "$POSTGRES_PASSWORD"
+            chmod 600 .env
+
+            # 3. Pull the CI-built images and roll the stack.
+            export ISOSAFE_BACKEND_IMAGE="$IMAGE_NS/backend:$SHA"
+            export ISOSAFE_FRONTEND_IMAGE="$IMAGE_NS/frontend:$SHA"
+            docker compose $COMPOSE_FILES pull backend frontend
+            docker compose $COMPOSE_FILES up -d
+
+            # 4. Migrations (the backend entrypoint also runs this).
+            docker compose $COMPOSE_FILES exec -T backend alembic upgrade head
+
+            # 5. Staging smoke test.
+            docker compose $COMPOSE_FILES exec -T \
+              -e SMOKE_ADMIN_EMAIL -e SMOKE_ADMIN_PASSWORD backend \
+              python -m scripts.smoke_api http://localhost:8000
+
+      - name: Verify staging front door
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+        run: |
+          if [ -z "$STAGING_URL" ]; then
+            echo "STAGING_URL not set; skipping external check"
+            exit 0
+          fi
+          curl -fsS "$STAGING_URL/api/health" | grep -q '"ok":true'

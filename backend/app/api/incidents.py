@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.api.deps import CurrentUser, require_operator, require_viewer, write_audit
 from app.db.engine import get_engine
 from app.db.tables import incidents
+from app.storage import snapshot_url
 
 router = APIRouter(prefix="/api/incidents", tags=["incidents"])
 
@@ -30,7 +31,8 @@ def _serialize(row: dict) -> dict:
     out = dict(row)
     out["ts"] = row["ts"].isoformat()
     out["resolved_at"] = row["resolved_at"].isoformat() if row["resolved_at"] else None
-    out["snapshot_url"] = f"/media/{row['snapshot_path']}" if row["snapshot_path"] else None
+    out["snapshot_url"] = snapshot_url(row["snapshot_path"])
+    out.pop("uuid", None)
     return out
 
 
@@ -101,7 +103,7 @@ async def patch_incident(
                 )
             updates["status"] = body.status
             if body.status == "resolved":
-                updates["resolved_at"] = dt.datetime.now(dt.timezone.utc)
+                updates["resolved_at"] = dt.datetime.now(dt.UTC)
         if body.assigned_to is not None:
             updates["assigned_to"] = body.assigned_to
         if body.resolution_notes is not None:

@@ -24,7 +24,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def create_token(email: str, role: str, token_type: str) -> str:
     s = get_settings()
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     if token_type == "access":
         exp = now + dt.timedelta(minutes=s.access_token_minutes)
     else:

@@ -64,11 +64,11 @@ async def ws_client(base_ws: str, token: str, camera_ids: list[str],
                             import datetime as dt
                             ts = dt.datetime.fromisoformat(msg["ts"])
                             alert_lat.append(
-                                (dt.datetime.now(dt.timezone.utc) - ts).total_seconds()
+                                (dt.datetime.now(dt.UTC) - ts).total_seconds()
                             )
                         except (KeyError, ValueError):
                             pass
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
         except Exception:
             if not stop.is_set():

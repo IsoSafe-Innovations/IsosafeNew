@@ -6,6 +6,7 @@ import asyncio
 import datetime as dt
 import logging
 
+from app.config import get_settings
 from app.db.engine import get_asyncpg_pool
 from app.metrics import DETECTIONS_WRITTEN
 
@@ -52,7 +53,7 @@ class DetectionWriter:
     ) -> None:
         row = (
             camera_id,
-            dt.datetime.fromtimestamp(ts, tz=dt.timezone.utc),
+            dt.datetime.fromtimestamp(ts, tz=dt.UTC),
             object_type,
             confidence,
             track_id,
@@ -72,11 +73,17 @@ class DetectionWriter:
         while not self._stopped.is_set():
             try:
                 await asyncio.wait_for(self._stopped.wait(), timeout=FLUSH_INTERVAL)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             await self._flush()
 
     async def _flush(self) -> None:
+        settings = get_settings()
+        if settings.agent_mode:
+            # In agent mode, detections are handled by agent; don't write to local DB
+            async with self._lock:
+                self._buffer = []
+            return
         async with self._lock:
             if not self._buffer:
                 return

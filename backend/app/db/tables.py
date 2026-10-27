@@ -39,6 +39,7 @@ incidents = sa.Table(
     "incidents",
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("uuid", UUID(as_uuid=True), nullable=True),
     sa.Column("camera_id", sa.Text, nullable=False),
     sa.Column("ts", sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column("incident_type", sa.Text, nullable=False),
@@ -54,6 +55,7 @@ incidents = sa.Table(
     sa.CheckConstraint(
         "status IN ('open','investigating','resolved','closed')", name="ck_incidents_status"
     ),
+    sa.UniqueConstraint("uuid", name="uq_incidents_uuid"),
 )
 
 analytics_hourly = sa.Table(

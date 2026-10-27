@@ -17,6 +17,7 @@ import time
 import cv2
 import sqlalchemy as sa
 
+from app.agent.runtime import run_agent_heartbeat, run_agent_stream
 from app.alerts.dispatcher import run_dispatcher
 from app.analytics.jobs import run_hourly_aggregation_loop, run_nightly_loop
 from app.config import get_settings
@@ -80,10 +81,35 @@ class Pipeline:
 
     # --- camera reconciliation ---
 
-    async def reconcile(self) -> None:
+    async def _camera_rows(self) -> list[dict] | None:
+        """Camera source rows for reconcile.
+
+        Normal mode reads the local cameras table. Agent mode pulls the set from
+        the cloud (``GET /agent/v1/config``) so a site box is driven entirely by
+        the cloud control plane. Returns ``None`` when the cloud is unreachable,
+        which tells the caller to keep the current streams running unchanged.
+        """
+        if self.settings.agent_mode:
+            from app.agent.client import get_agent_client
+
+            try:
+                cfg = await get_agent_client().get_config()
+            except Exception:
+                log.exception("agent config fetch failed; keeping current cameras")
+                return None
+            rows = cfg.get("cameras") or []
+            log.info("agent config version=%s cameras=%d", cfg.get("config_version"), len(rows))
+            return rows
+
         engine = get_engine()
         async with engine.connect() as conn:
             rows = (await conn.execute(sa.select(cameras_table))).mappings().all()
+        return list(rows)
+
+    async def reconcile(self) -> None:
+        rows = await self._camera_rows()
+        if rows is None:
+            return
 
         enabled = {r["id"]: r for r in rows if r["enabled"]}
 
@@ -138,7 +164,7 @@ class Pipeline:
                 log.exception("reconcile failed")
             try:
                 await asyncio.wait_for(self.stop_event.wait(), timeout=RECONCILE_INTERVAL)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
     # --- inference loop ---
@@ -162,14 +188,6 @@ class Pipeline:
             if not batch:
                 await asyncio.sleep(BATCH_WAIT)
                 continue
-            for frame in batch:
-                proc = self.processors.get(frame.camera_id)
-                if proc is not None:
-                    try:
-                        await proc.publish_preview(frame.image, frame.ts)
-                    except Exception:
-                        log.exception("preview publish failed",
-                                      extra={"camera_id": frame.camera_id})
             jpegs: list[bytes] = []
             for frame in batch:
                 ok, buf = cv2.imencode(".jpg", frame.image, quality)
@@ -193,11 +211,30 @@ class Pipeline:
         tasks = [
             asyncio.create_task(self._reconcile_loop(), name="reconcile"),
             asyncio.create_task(self._inference_loop(), name="inference"),
-            asyncio.create_task(run_dispatcher(self.stop_event), name="alert-dispatcher"),
-            asyncio.create_task(run_hourly_aggregation_loop(self.stop_event), name="analytics"),
-            asyncio.create_task(run_nightly_loop(self.stop_event), name="nightly"),
             asyncio.create_task(run_resource_guards(self.stop_event), name="guards"),
         ]
+        if self.settings.agent_mode:
+            # The site agent keeps no local Postgres/Redis. Alert fan-out,
+            # analytics rollups and nightly maintenance are cloud-side jobs;
+            # only the live frame uplink and the health heartbeat run here.
+            tasks.append(
+                asyncio.create_task(
+                    run_agent_heartbeat(self.streams, self.stop_event), name="agent-heartbeat"
+                )
+            )
+            tasks.append(
+                asyncio.create_task(run_agent_stream(self.stop_event), name="agent-stream")
+            )
+        else:
+            tasks.append(
+                asyncio.create_task(run_dispatcher(self.stop_event), name="alert-dispatcher")
+            )
+            tasks.append(
+                asyncio.create_task(run_hourly_aggregation_loop(self.stop_event), name="analytics")
+            )
+            tasks.append(
+                asyncio.create_task(run_nightly_loop(self.stop_event), name="nightly")
+            )
         try:
             await asyncio.gather(*tasks)
         finally:

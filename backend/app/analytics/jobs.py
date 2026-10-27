@@ -116,7 +116,7 @@ ON CONFLICT (camera_id, day) DO UPDATE SET
 
 
 async def aggregate_current_hour() -> None:
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     bucket_start = now.replace(minute=0, second=0, microsecond=0)
     engine = get_engine()
     async with engine.begin() as conn:
@@ -132,7 +132,7 @@ async def snapshot_heatmaps() -> None:
     r = get_redis()
     directory = os.path.join(settings.media_root, "heatmaps")
     os.makedirs(directory, exist_ok=True)
-    hour_tag = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H")
+    hour_tag = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H")
     cursor = 0
     while True:
         cursor, keys = await r.scan(cursor, match=HEATMAP_KEY_PREFIX + "*", count=100)
@@ -189,7 +189,7 @@ async def cleanup_stuck_uploads() -> None:
 
 
 async def run_daily_rollup(day: dt.date | None = None) -> None:
-    day = day or (dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=1))
+    day = day or (dt.datetime.now(dt.UTC).date() - dt.timedelta(days=1))
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.execute(DAILY_ROLLUP, {"day": day})
@@ -200,7 +200,7 @@ async def run_hourly_aggregation_loop(stop_event: asyncio.Event) -> None:
     while not stop_event.is_set():
         try:
             await aggregate_current_hour()
-            hour = dt.datetime.now(dt.timezone.utc).hour
+            hour = dt.datetime.now(dt.UTC).hour
             if hour != last_heatmap_hour:
                 last_heatmap_hour = hour
                 await snapshot_heatmaps()
@@ -208,19 +208,19 @@ async def run_hourly_aggregation_loop(stop_event: asyncio.Event) -> None:
             log.exception("hourly aggregation failed")
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=AGGREGATION_INTERVAL)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
 
 async def run_nightly_loop(stop_event: asyncio.Event) -> None:
     while not stop_event.is_set():
-        now = dt.datetime.now(dt.timezone.utc)
+        now = dt.datetime.now(dt.UTC)
         next_run = (now + dt.timedelta(days=1)).replace(hour=2, minute=0, second=0, microsecond=0)
         try:
             await asyncio.wait_for(stop_event.wait(),
                                    timeout=(next_run - now).total_seconds())
             return
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         try:
             await run_daily_rollup()

@@ -1,20 +1,12 @@
-"""Incident creation: DB row + annotated snapshot + Redis publish."""
+"""Annotated snapshot rendering shared by the local and cloud incident sinks."""
 import datetime as dt
-import json
 import logging
 import os
-import time
 
 import cv2
 import numpy as np
-import sqlalchemy as sa
 
 from app.config import get_settings
-from app.db.engine import get_engine
-from app.db.tables import incidents
-from app.inference.tracker import Track
-from app.metrics import ALERT_DISPATCH_LATENCY, INCIDENTS_FIRED
-from app.redis_client import ALERT_CHANNEL, get_redis
 from app.rules.engine import RuleFire
 
 log = logging.getLogger(__name__)
@@ -30,16 +22,11 @@ def set_snapshots_paused(paused: bool) -> None:
     _snapshots_paused = paused
 
 
-def _save_snapshot(image: np.ndarray, fire: RuleFire, camera_id: str, ts: float) -> str | None:
-    if _snapshots_paused:
-        return None
-    settings = get_settings()
-    day = dt.datetime.fromtimestamp(ts, tz=dt.timezone.utc).strftime("%Y-%m-%d")
-    directory = os.path.join(settings.media_root, "snapshots", day)
-    os.makedirs(directory, exist_ok=True)
-    filename = f"{camera_id}_{int(ts * 1000)}_{fire.incident_type}.jpg"
-    path = os.path.join(directory, filename)
+def render_snapshot(image: np.ndarray, fire: RuleFire) -> bytes | None:
+    """Annotate the triggering frame and return JPEG bytes, or None on failure.
 
+    Agent mode uploads these bytes straight to S3; local mode writes them to disk.
+    """
     annotated = image.copy()
     if fire.track is not None:
         h, w = annotated.shape[:2]
@@ -50,46 +37,30 @@ def _save_snapshot(image: np.ndarray, fire: RuleFire, camera_id: str, ts: float)
         cv2.rectangle(annotated, pt1, pt2, color, 3)
         cv2.putText(annotated, fire.incident_type, (pt1[0], max(20, pt1[1] - 8)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-    ok = cv2.imwrite(path, annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
     if not ok:
-        log.error("snapshot write failed: %s", path)
+        return None
+    return buf.tobytes()
+
+
+def _save_snapshot(image: np.ndarray, fire: RuleFire, camera_id: str, ts: float) -> str | None:
+    if _snapshots_paused:
+        return None
+    settings = get_settings()
+    day = dt.datetime.fromtimestamp(ts, tz=dt.UTC).strftime("%Y-%m-%d")
+    directory = os.path.join(settings.media_root, "snapshots", day)
+    os.makedirs(directory, exist_ok=True)
+    filename = f"{camera_id}_{int(ts * 1000)}_{fire.incident_type}.jpg"
+    path = os.path.join(directory, filename)
+
+    data = render_snapshot(image, fire)
+    if data is None:
+        log.error("snapshot encode failed: %s", path)
+        return None
+    try:
+        with open(path, "wb") as fh:
+            fh.write(data)
+    except OSError:
+        log.exception("snapshot write failed: %s", path)
         return None
     return os.path.relpath(path, settings.media_root)
-
-
-async def create_incident(camera_id: str, fire: RuleFire, image: np.ndarray, ts: float) -> int:
-    """Write incident row, save annotated snapshot, publish to Redis. Returns incident id."""
-    snapshot_path = _save_snapshot(image, fire, camera_id, ts)
-    engine = get_engine()
-    async with engine.begin() as conn:
-        result = await conn.execute(
-            sa.insert(incidents)
-            .values(
-                camera_id=camera_id,
-                ts=dt.datetime.fromtimestamp(ts, tz=dt.timezone.utc),
-                incident_type=fire.incident_type,
-                severity=fire.severity,
-                description=fire.description,
-                snapshot_path=snapshot_path,
-                status="open",
-            )
-            .returning(incidents.c.id)
-        )
-        incident_id = result.scalar_one()
-
-    INCIDENTS_FIRED.labels(incident_type=fire.incident_type, severity=fire.severity).inc()
-    payload = {
-        "type": "incident",
-        "id": incident_id,
-        "camera_id": camera_id,
-        "incident_type": fire.incident_type,
-        "severity": fire.severity,
-        "description": fire.description,
-        "snapshot_url": f"/media/{snapshot_path}" if snapshot_path else None,
-        "ts": dt.datetime.fromtimestamp(ts, tz=dt.timezone.utc).isoformat(),
-    }
-    await get_redis().publish(ALERT_CHANNEL, json.dumps(payload))
-    ALERT_DISPATCH_LATENCY.observe(time.time() - ts)
-    log.info("incident %s: %s", fire.incident_type, fire.description,
-             extra={"camera_id": camera_id})
-    return incident_id

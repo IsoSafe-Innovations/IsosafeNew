@@ -1,7 +1,7 @@
 """Environment-driven settings. Every tunable has a sane default."""
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -71,7 +71,10 @@ class Settings(BaseSettings):
     anthropic_model: str = Field(default="claude-sonnet-4-6", alias="ANTHROPIC_MODEL")
 
     # Security / limits
-    fernet_key: str = Field(default="", alias="FERNET_KEY")
+    # PRD names this CAMERA_SECRET_KEY; FERNET_KEY is the historical alias.
+    fernet_key: str = Field(
+        default="", validation_alias=AliasChoices("CAMERA_SECRET_KEY", "FERNET_KEY")
+    )
     upload_max_mb: int = Field(default=500, alias="UPLOAD_MAX_MB")
 
     # Resource guards
@@ -84,8 +87,33 @@ class Settings(BaseSettings):
 
     @property
     def sync_database_url(self) -> str:
-        """psycopg2 URL for Alembic and synchronous helpers."""
+        """Blocking DSN (psycopg2) used by Alembic, derived from the async DSN."""
         return self.database_url.replace("+asyncpg", "+psycopg2")
+
+    # Agent mode (optional, additive)
+    agent_mode: bool = Field(default=False, alias="AGENT_MODE")
+    cloud_url: str = Field(default="", alias="CLOUD_URL")
+    agent_token: str = Field(default="", alias="AGENT_TOKEN")
+    agent_live_fps: int = Field(default=2, alias="AGENT_LIVE_FPS")
+    agent_version: str = Field(default="1.0-agent", alias="AGENT_VERSION")
+    agent_ws_ping_seconds: int = Field(default=20, alias="AGENT_WS_PING_SECONDS")
+    agent_heartbeat_seconds: int = Field(default=30, alias="AGENT_HEARTBEAT_SECONDS")
+    agent_online_secs: int = Field(default=90, alias="AGENT_ONLINE_SECS")
+    agent_max_message_bytes: int = Field(default=1_048_576, alias="AGENT_MAX_MESSAGE_BYTES")
+    # Bounded incident outbox: covers cloud outages of roughly five minutes
+    # (PRD v2 Phase 1a). Oldest incidents are dropped first when full.
+    agent_incident_queue_max: int = Field(default=500, alias="AGENT_INCIDENT_QUEUE_MAX")
+
+    # Object storage (S3 in cloud, MinIO locally). Snapshots stay private; the
+    # cloud hands out short-lived presigned PUT/GET URLs instead of proxying bytes.
+    s3_endpoint_url: str = Field(default="", alias="S3_ENDPOINT_URL")
+    s3_public_endpoint_url: str = Field(default="", alias="S3_PUBLIC_ENDPOINT_URL")
+    s3_region: str = Field(default="us-east-1", alias="S3_REGION")
+    s3_bucket: str = Field(default="", alias="S3_BUCKET")
+    s3_access_key: str = Field(default="", alias="S3_ACCESS_KEY")
+    s3_secret_key: str = Field(default="", alias="S3_SECRET_KEY")
+    s3_presign_put_seconds: int = Field(default=300, alias="S3_PRESIGN_PUT_SECONDS")
+    s3_presign_get_seconds: int = Field(default=300, alias="S3_PRESIGN_GET_SECONDS")
 
 
 @lru_cache
