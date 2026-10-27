@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "checks": {
+    "dashboard": true,
+    "hsts": true,
+    "no_sniff": true,
+    "frame_protection": true,
+    "unauthenticated /api/cameras": true,
+    "forged_token /api/cameras": true,
+    "unauthenticated /api/incidents": true,
+    "forged_token /api/incidents": true,
+    "unauthenticated /api/users": true,
+    "forged_token /api/users": true,
+    "metrics_private": true,
+    "legacy_media_private": true,
+    "healthy": true,
+    "https_redirect": true
+  }
+}

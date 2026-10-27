@@ -3,8 +3,9 @@
 # is set explicitly.
 
 data "aws_route53_zone" "demo" {
-  count = var.hosted_zone_id == "" ? 1 : 0
-  name  = var.domain_root
+  count        = var.hosted_zone_id == "" ? 1 : 0
+  name         = var.domain_root
+  private_zone = false
 }
 
 resource "aws_route53_record" "demo" {

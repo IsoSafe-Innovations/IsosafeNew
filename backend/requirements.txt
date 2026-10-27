@@ -28,3 +28,6 @@ wsdiscovery>=2.0.0
 onvif-zeep>=0.2.12
 python-json-logger>=2.0
 psutil>=6.0
+# Security floors verified by the deployment dependency audit.
+Pillow>=13.0.0
+filelock>=4.2.1

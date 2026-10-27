@@ -18,3 +18,9 @@ sample_videos/*.mov
 *.db
 *.sqlite
 *.sqlite3
+# Machine-specific local launch files and certificate trust bundles.
+local-ca.crt
+Dockerfile.local
+docker-compose.local.yml
+deploy/nginx.local.conf
+Start-Local.ps1

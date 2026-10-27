@@ -37,13 +37,13 @@ variable "public_subnet_cidr" {
 variable "instance_type" {
   description = "EC2 instance type for the demo VM (Docker + Postgres + Redis + backend + frontend)."
   type        = string
-  default     = "t3.small"
+  default     = "t3.medium"
 }
 
 variable "root_volume_size" {
   description = "Root EBS volume size in GiB."
   type        = number
-  default     = 30
+  default     = 50
 }
 
 variable "ssh_public_key" {
@@ -64,8 +64,11 @@ variable "ssh_allowed_cidrs" {
   default     = []
 
   validation {
-    condition     = length(var.ssh_allowed_cidrs) > 0
-    error_message = "ssh_allowed_cidrs must list at least the developer/owner IP; never leave SSH open to 0.0.0.0/0."
+    condition = length(var.ssh_allowed_cidrs) > 0 && alltrue([
+      for cidr in var.ssh_allowed_cidrs :
+      can(cidrnetmask(cidr)) && try(tonumber(split("/", cidr)[1]) > 0, false)
+    ])
+    error_message = "ssh_allowed_cidrs must contain valid restricted IPv4 CIDRs; 0.0.0.0/0 is not allowed."
   }
 }
 

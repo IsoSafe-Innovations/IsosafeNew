@@ -21,10 +21,12 @@ subdomain   = "demo"                    # -> https://demo.isosafe.com
 # Globally unique bucket name (private, SSE, Block Public Access).
 bucket_name = "isosafe-demo-snapshots"
 
-instance_type   = "t3.small"
+instance_type    = "t3.medium"
+root_volume_size = 50
 enable_bucket_versioning = false
 termination_protection   = false
 
 # Monthly AWS cost budget + email alerts (DEMO-FR-65).
 budget_limit_usd   = 100
 budget_alert_email = "ops@isosafe.com"
+operations_alert_email = "ops@isosafe.com" # Confirm the SNS email subscription.
