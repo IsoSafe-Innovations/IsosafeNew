@@ -7,8 +7,8 @@
 #   Original v1 stack (unchanged, inference included):
 #     docker compose up -d --build
 #
-# This file is an OVERRIDE, not a fork: it only removes services that do not
-# belong on the cloud VM. Every service definition stays in docker-compose.yml.
+# This file is an OVERRIDE, not a fork. It removes services that do not
+# belong on the cloud VM. Application services stay in docker-compose.yml.
 #
 # Excluded on the cloud VM (they run on the site/demo box instead):
 #   inference  - YOLO + tracking + rules live on the agent (site) box.
@@ -19,6 +19,8 @@
 #   docker compose -f docker-compose.yml -f docker-compose.cloud.yml --profile prometheus up -d
 #
 # Local S3: MinIO stands in for S3 during development (PRD v2 Phase 1a §12).
+# This is the only MinIO definition. The single-box demo layers
+# docker-compose.demo.yml on top of this file and only changes host ports.
 
 services:
   inference:

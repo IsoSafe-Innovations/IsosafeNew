@@ -17,16 +17,47 @@
 #     first_deploy overrides them with the defaults and builds in place.
 
 services:
+  postgres:
+    logging: &cloud_logs
+      driver: awslogs
+      options: &cloud_log_options
+        awslogs-region: ${S3_REGION:-us-east-1}
+        awslogs-group: ${AWS_LOG_GROUP:?set AWS_LOG_GROUP from Terraform application_log_group}
+        awslogs-stream: postgres
+        mode: non-blocking
+        max-buffer-size: 4m
+  redis:
+    logging:
+      <<: *cloud_logs
+      options:
+        <<: *cloud_log_options
+        awslogs-stream: redis
   nginx:
+    logging:
+      <<: *cloud_logs
+      options:
+        <<: *cloud_log_options
+        awslogs-stream: nginx
     ports:
       - "80:80"
       - "443:443"
-    volumes:
+    volumes: !override
       - ./deploy/nginx.cloud.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx:/etc/nginx/isosafe:ro
       - ./deploy/certs:/etc/nginx/certs:ro
       - ./deploy/acme:/var/www/acme
+      - media:/data/media:ro
 
   backend:
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      <<: *cloud_logs
+      options:
+        <<: *cloud_log_options
+        awslogs-stream: backend
+    volumes:
+      - ./deploy/backups:/data/backups
     image: ${ISOSAFE_BACKEND_IMAGE:-isosafe-backend:local}
     environment:
       # Literal empty strings so the cloud.yml MinIO defaults cannot leak in:
@@ -39,6 +70,11 @@ services:
       S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET to the bucket created by infra/demo}
 
   frontend:
+    logging:
+      <<: *cloud_logs
+      options:
+        <<: *cloud_log_options
+        awslogs-stream: frontend
     image: ${ISOSAFE_FRONTEND_IMAGE:-isosafe-frontend:local}
     build:
       context: ./frontend

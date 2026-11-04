@@ -1,5 +1,9 @@
 # Database Restore Procedure
 
+For AWS deployments, use [OPERATIONS.md](OPERATIONS.md). AWS backups contain both
+the database dump and runtime encryption/authentication secrets in private S3;
+the procedure below describes the older local-only backup service.
+
 Backups are written nightly at 02:30 UTC by the `backup` service to the
 `deploy/backups/` host directory as custom-format dumps
 (`isosafe_YYYYMMDD_HHMMSS.dump`), rotated after 14 days.

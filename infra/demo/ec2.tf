@@ -14,7 +14,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-noble-24.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
   }
 
   filter {
@@ -58,11 +58,14 @@ resource "aws_instance" "demo" {
   key_name                    = local.key_name
   iam_instance_profile        = aws_iam_instance_profile.demo.name
   associate_public_ip_address = false
-  user_data                   = base64encode(local.user_data)
+  user_data                   = local.user_data
   user_data_replace_on_change = false
+  disable_api_termination     = var.termination_protection
 
   metadata_options {
-    http_tokens = "required"
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
   }
 
   root_block_device {

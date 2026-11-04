@@ -112,7 +112,7 @@ def main() -> int:
     ap.add_argument("--wait-frames", type=float, default=60.0, help="seconds to wait for live frames")
     ap.add_argument("--expiry-wait", type=float, default=0.0, help="sleep then re-open snapshot (300 for the 403 test)")
     ap.add_argument("--outage", action="store_true", help="stop/start the cloud backend (needs docker)")
-    ap.add_argument("--compose", default="docker compose -f docker-compose.yml -f docker-compose.demo.yml")
+    ap.add_argument("--compose", default="docker compose -f docker-compose.yml -f docker-compose.cloud.yml -f docker-compose.demo.yml")
     args = ap.parse_args()
 
     if not args.password:

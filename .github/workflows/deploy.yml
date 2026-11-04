@@ -113,4 +113,4 @@ jobs:
             echo "STAGING_URL not set; skipping external check"
             exit 0
           fi
-          curl -fsS "$STAGING_URL/api/health" | grep -q '"ok":true'
+          curl -fsS "$STAGING_URL/api/health" | python -c 'import json, sys; health = json.load(sys.stdin); sys.exit(0 if health.get("status") == "ok" else 1)'

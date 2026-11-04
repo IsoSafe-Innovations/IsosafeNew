@@ -1,0 +1,59 @@
+name: Validate AWS deployment
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
+      - run: npm run build
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - name: Validate Terraform without AWS credentials
+        working-directory: infra/demo
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false
+          terraform validate
+          terraform test
+      - name: Validate deployment scripts and Compose configuration
+        env:
+          S3_BUCKET: isosafe-validation-only
+          AWS_LOG_GROUP: /isosafe/validation/application
+        run: |
+          for script in deploy/*.sh; do
+            bash -n "$script"
+          done
+          cp .env.example .env
+          docker compose -f docker-compose.yml -f docker-compose.cloud.yml -f docker-compose.aws.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.cloud.yml -f docker-compose.aws.yml config --format json > /tmp/aws-compose.json
+          jq -e '
+            (.services | keys) == ["backend", "frontend", "nginx", "postgres", "redis"] and
+            .services.backend.environment.S3_ENDPOINT_URL == "" and
+            .services.backend.environment.S3_ACCESS_KEY == "" and
+            .services.backend.environment.S3_SECRET_KEY == "" and
+            ([.services.backend.ports, .services.postgres.ports, .services.redis.ports] | all(. == null or . == []))
+          ' /tmp/aws-compose.json

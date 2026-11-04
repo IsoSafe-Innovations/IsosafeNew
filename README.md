@@ -35,6 +35,9 @@ build), `nginx` (TLS termination + reverse proxy), `prometheus`, `backup`
 
 ## Quick start
 
+For AWS EC2 + private S3 deployment, follow [the AWS deployment guide](deploy/AWS.md).
+Camera inference runs on a separate on-site agent in this mode.
+
 ```bash
 cp .env.example .env
 # Edit .env: set POSTGRES_PASSWORD, JWT_SECRET, FERNET_KEY (see below),
@@ -131,7 +134,7 @@ python -m venv .venv && .venv/Scripts/pip install -r requirements.txt -r require
 .venv/Scripts/python -m uvicorn app.main:app --reload   # API
 .venv/Scripts/python -m app.pipeline.runner              # detection pipeline
 
-# Frontend (Node 20+)
+# Frontend (Node 22.13+ LTS or Node 24)
 cd frontend
 npm install && npm run dev                   # http://localhost:5173, proxies /api
 

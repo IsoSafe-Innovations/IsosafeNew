@@ -95,6 +95,7 @@ services:
       - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx:/etc/nginx/isosafe:ro
       - ./deploy/certs:/etc/nginx/certs:ro
       - media:/data/media:ro
     depends_on: [backend, frontend]

@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api", tags=["health"])
 
 
 @router.get("/health")
-async def health() -> dict:
+async def health(response: Response) -> dict:
     settings = get_settings()
     db_ok = redis_ok = False
     db_error = redis_error = None
@@ -24,13 +24,17 @@ async def health() -> dict:
             await conn.execute(sa.text("SELECT 1"))
         db_ok = True
     except Exception as e:
-        db_error = str(e)
+        log.warning("Database health check failed (%s)", type(e).__name__)
+        db_error = "unavailable"
     try:
         await get_redis().ping()
         redis_ok = True
     except Exception as e:
-        redis_error = str(e)
+        log.warning("Redis health check failed (%s)", type(e).__name__)
+        redis_error = "unavailable"
 
+    if not (db_ok and redis_ok):
+        response.status_code = 503
     result = {
         "status": "ok" if (db_ok and redis_ok) else "degraded",
         "database": {"ok": db_ok, "error": db_error},

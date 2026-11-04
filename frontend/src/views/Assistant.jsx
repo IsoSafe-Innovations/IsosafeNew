@@ -1,7 +1,7 @@
 import { Bot, RefreshCw, Send } from 'lucide-react';
 import { useState } from 'react';
 import { usePolling } from '../hooks/usePolling.jsx';
-import { get, post } from '../lib/api';
+import { post } from '../lib/api';
 import { fmtTime } from '../lib/format';
 
 const EXAMPLES = [

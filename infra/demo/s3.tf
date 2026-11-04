@@ -12,9 +12,21 @@
 
 resource "aws_s3_bucket" "snapshots" {
   bucket        = var.bucket_name
-  force_destroy = true
+  force_destroy = false
 
   tags = { Name = "${local.name_prefix}-snapshots" }
+}
+
+resource "aws_s3_bucket_policy" "snapshots_tls" {
+  bucket = aws_s3_bucket.snapshots.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Deny", Principal = "*", Action = "s3:*",
+      Resource  = [aws_s3_bucket.snapshots.arn, "${aws_s3_bucket.snapshots.arn}/*"],
+      Condition = { Bool = { "aws:SecureTransport" = "false" } }
+    }]
+  })
 }
 
 resource "aws_s3_bucket_ownership_controls" "snapshots" {

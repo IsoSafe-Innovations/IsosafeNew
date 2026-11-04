@@ -10,10 +10,11 @@
 # Idempotent: re-runs pull the requested ref, keep the existing root-only
 # .env, renew the certificate when due, and recreate changed containers.
 #
-# Required env: DOMAIN, ACME_EMAIL, S3_BUCKET
+# Required env: DOMAIN, ACME_EMAIL, S3_BUCKET, BACKUP_BUCKET, AWS_LOG_GROUP, OPS_LOG_GROUP
 # Optional env: REPO_URL, REPO_REF (default main), APP_DIR, S3_REGION,
 #               JWT_SECRET, AGENT_TOKEN, FERNET_KEY, POSTGRES_PASSWORD,
 #               BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_PASSWORD, ADMIN_EMAIL
+# Set SKIP_CODE_UPDATE=1 to deploy a prepared checkout uploaded to APP_DIR.
 set -euo pipefail
 
 log() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
@@ -26,6 +27,9 @@ REPO_URL="${REPO_URL:-https://github.com/IsoSafe-Innovations/IsosafeNew.git}"
 REPO_REF="${REPO_REF:-main}"
 APP_DIR="${APP_DIR:-/opt/isosafe/app}"
 S3_REGION="${S3_REGION:-us-east-1}"
+BACKUP_BUCKET="${BACKUP_BUCKET:?set BACKUP_BUCKET from Terraform backup_bucket}"
+AWS_LOG_GROUP="${AWS_LOG_GROUP:?set AWS_LOG_GROUP from Terraform application_log_group}"
+OPS_LOG_GROUP="${OPS_LOG_GROUP:?set OPS_LOG_GROUP from Terraform operations_log_group}"
 BOOTSTRAP_ADMIN_EMAIL="${BOOTSTRAP_ADMIN_EMAIL:-admin@isosafe.local}"
 
 COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.cloud.yml -f docker-compose.aws.yml)
@@ -41,16 +45,21 @@ command -v docker >/dev/null || { echo "docker not installed" >&2; exit 1; }
 docker compose version >/dev/null
 
 # --- 1. Code -----------------------------------------------------------------
-log "Fetching $REPO_REF into $APP_DIR"
-if [[ -d "$APP_DIR/.git" ]]; then
+if [[ ${SKIP_CODE_UPDATE:-0} == 1 ]]; then
+  [[ -f "$APP_DIR/docker-compose.aws.yml" ]] || { echo "No prepared checkout at $APP_DIR" >&2; exit 1; }
+  log "Using prepared checkout at $APP_DIR (Git update skipped)"
+elif [[ -d "$APP_DIR/.git" ]]; then
+  [[ -z $(git -C "$APP_DIR" status --porcelain --untracked-files=no) ]] || {
+    echo "Tracked local changes found; commit them or use SKIP_CODE_UPDATE=1" >&2; exit 1;
+  }
+  log "Fetching $REPO_REF into $APP_DIR"
   git -C "$APP_DIR" fetch --depth 1 origin "$REPO_REF"
   git -C "$APP_DIR" checkout -q FETCH_HEAD
 else
   mkdir -p "$(dirname "$APP_DIR")"
-  if ! git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$APP_DIR" 2>/dev/null; then
-    git clone "$REPO_URL" "$APP_DIR"
-    git -C "$APP_DIR" checkout -q "$REPO_REF"
-  fi
+  git clone --no-checkout "$REPO_URL" "$APP_DIR"
+  git -C "$APP_DIR" fetch --depth 1 origin "$REPO_REF"
+  git -C "$APP_DIR" checkout -q --detach FETCH_HEAD
 fi
 cd "$APP_DIR"
 mkdir -p deploy/certs deploy/acme deploy/backups
@@ -95,6 +104,9 @@ S3_REGION=$S3_REGION
 S3_BUCKET=$S3_BUCKET
 S3_ACCESS_KEY=
 S3_SECRET_KEY=
+BACKUP_BUCKET=$BACKUP_BUCKET
+AWS_LOG_GROUP=$AWS_LOG_GROUP
+OPS_LOG_GROUP=$OPS_LOG_GROUP
 S3_PRESIGN_PUT_SECONDS=300
 S3_PRESIGN_GET_SECONDS=300
 EOF
@@ -104,8 +116,14 @@ else
   log ".env already present; keeping it (delete to rotate secrets)"
   ADMIN_SHOWN=""
 fi
+# Add new operational settings on upgrades without rotating application secrets.
+for NAME in BACKUP_BUCKET AWS_LOG_GROUP OPS_LOG_GROUP; do
+  grep -q "^$NAME=" "$ENV_FILE" || printf '%s=%s\n' "$NAME" "${!NAME}" >> "$ENV_FILE"
+done
 # shellcheck disable=SC1090
 set -a; . "$ENV_FILE"; set +a
+[[ ${#JWT_SECRET} -ge 32 && ${#AGENT_TOKEN} -ge 32 ]] || { echo 'JWT_SECRET and AGENT_TOKEN must contain at least 32 characters' >&2; exit 1; }
+[[ ${#BOOTSTRAP_ADMIN_PASSWORD} -ge 16 ]] || { echo 'Bootstrap admin password must contain at least 16 characters' >&2; exit 1; }
 
 # --- 3. Self-signed cert so nginx can start, then ACME -----------------------
 if [[ ! -f deploy/certs/server.crt ]]; then
@@ -117,12 +135,17 @@ fi
 
 # --- 4. Bring the stack up ---------------------------------------------------
 log "Building and starting the stack (nginx + TLS)"
+compose config --quiet
 compose up -d --build
 
 log "Waiting for backend health"
 healthy=0
 for _ in $(seq 1 60); do
-  if compose exec -T backend curl -fsS http://localhost:8000/api/health >/dev/null 2>&1; then
+  if compose exec -T backend python -c '
+import json, urllib.request
+health = json.load(urllib.request.urlopen("http://localhost:8000/api/health", timeout=10))
+assert health.get("status") == "ok", health
+' >/dev/null 2>&1; then
     healthy=1; break
   fi
   sleep 5
@@ -179,31 +202,42 @@ systemctl enable --now isosafe-certbot-renew.timer
 
 # --- 6. Verify the public front door ----------------------------------------
 log "Checking https://$DOMAIN/ (Day-6 target: login page)"
-TLS_OK=1
 if ! curl -fsS -o /tmp/isosafe-index.html "https://$DOMAIN/"; then
-  TLS_OK=0
-  warn "trusted TLS failed; retrying with -k (certificate may still be issuing)"
-  curl -kfsS -o /tmp/isosafe-index.html "https://$DOMAIN/" || true
+  echo "Trusted HTTPS verification failed for $DOMAIN" >&2
+  exit 1
 fi
 if grep -q '<title>Iso Safe</title>' /tmp/isosafe-index.html 2>/dev/null; then
   echo "  PASS login page served at https://$DOMAIN/"
 else
-  warn "index page did not look like the Iso Safe login page"
+  echo "index page did not look like the Iso Safe login page" >&2
+  exit 1
 fi
-if curl -kfsS "https://$DOMAIN/api/health" | grep -q '"ok":true'; then
-  echo "  PASS /api/health reports database ok"
+if curl -fsS "https://$DOMAIN/api/health" | docker compose "${COMPOSE_FILES[@]}" exec -T backend python -c '
+import json, sys
+health = json.load(sys.stdin)
+assert health.get("status") == "ok", health
+'; then
+  echo "  PASS /api/health reports database and Redis healthy"
 else
-  warn "/api/health did not report healthy"
+  echo "/api/health did not report healthy" >&2
+  exit 1
 fi
 
-log "Done"
+log "Verifying S3 access through the EC2 instance role"
+compose exec -T backend python -c '
+import os, boto3
+client = boto3.client("s3", region_name=os.environ["S3_REGION"])
+client.head_bucket(Bucket=os.environ["S3_BUCKET"])
+print("  PASS private S3 bucket reachable with instance role")
+'
+
+log "Installing backup, recovery drill and monitoring timers"
+APP_DIR="$APP_DIR" DOMAIN="$DOMAIN" bash deploy/install_operations.sh
+log "Deployment and initial recovery checks completed"
 echo "  URL:   https://$DOMAIN/"
 echo "  admin: $BOOTSTRAP_ADMIN_EMAIL"
 if [[ -n "$ADMIN_SHOWN" ]]; then
   echo "  password: $ADMIN_SHOWN   (change after first login)"
 else
   echo "  password: see $ENV_FILE (BOOTSTRAP_ADMIN_PASSWORD)"
-fi
-if [[ $TLS_OK -eq 0 ]]; then
-  warn "Certificate was not yet trusted; re-run this script once DNS/certbot settles."
 fi

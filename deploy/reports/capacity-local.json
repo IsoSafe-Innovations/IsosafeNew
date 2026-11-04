@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "requests": 600,
+  "errors": 0,
+  "error_rate": 0.0,
+  "p95_ms": 41.68,
+  "achieved_rps": 10.01,
+  "target_rps": 10,
+  "concurrency_limit": 20,
+  "ws_clients_verified": 20,
+  "elapsed_seconds": 59.91,
+  "scope": "Read-only API and idle WebSockets; excludes video throughput and incident fanout"
+}

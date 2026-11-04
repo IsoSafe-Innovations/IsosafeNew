@@ -1,0 +1,6 @@
+{
+  "scope": "Local PostgreSQL dump and isolated restore; not an AWS/S3 or TimescaleDB recovery drill",
+  "database": "isosafe_restorecheck_1793113144",
+  "passed": true,
+  "elapsed_seconds": 1.48
+}

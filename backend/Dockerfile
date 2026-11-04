@@ -16,7 +16,8 @@ WORKDIR /srv
 COPY requirements.txt .
 # Pin CPU torch before ultralytics/easyocr to avoid multi-GB CUDA wheel downloads.
 ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir torch torchvision --index-url ${TORCH_INDEX} \
+RUN python -m pip install --no-cache-dir --upgrade "pip>=26.2.0" "setuptools>=84.1.0" \
+    && pip install --no-cache-dir torch torchvision --index-url ${TORCH_INDEX} \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
