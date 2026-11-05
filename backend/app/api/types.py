@@ -43,6 +43,7 @@ class AgentCameraHealth(BaseModel):
     fps: float = 0.0
     reconnects: int = 0
     dropped: int = 0
+    analysis: dict[str, Any] | None = None
 
 
 # PRD v2 Phase 1a §5: heartbeat every 30s carrying process metrics and the

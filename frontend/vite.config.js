@@ -1,5 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import process from 'node:process';
+
+const apiTarget = process.env.ISOSAFE_API_PROXY_TARGET || 'http://localhost:8000';
 
 export default defineConfig({
   plugins: [react()],
@@ -7,12 +10,12 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: apiTarget,
         changeOrigin: true,
         ws: true,
       },
       '/media': {
-        target: 'http://localhost:8000',
+        target: apiTarget,
         changeOrigin: true,
       },
     },

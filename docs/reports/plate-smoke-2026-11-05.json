@@ -1,0 +1,24 @@
+{
+  "synthetic": true,
+  "expected": "ABC123",
+  "readings": [
+    [
+      "ABC123",
+      0.9957609331188871
+    ],
+    [
+      "ABC123",
+      0.9957609331188871
+    ],
+    [
+      "ABC123",
+      0.9957609331188871
+    ]
+  ],
+  "consensus": [
+    "ABC123",
+    0.9957609331188871
+  ],
+  "passed": true,
+  "limitation": "Synthetic clear-plate smoke test only; real plate accuracy is not measured."
+}

@@ -13,6 +13,8 @@ sample_videos/*.mp4
 sample_videos/*.avi
 sample_videos/*.mov
 .pytest_cache/
+.e2e-live/
+.e2e-preview.html
 .ruff_cache/
 *.egg-info/
 *.db
@@ -25,5 +27,6 @@ docker-compose.local.yml
 deploy/nginx.local.conf
 Start-Local.ps1
 .flatten-backup-*/
+.claude/
 *.tar.gz
 Isosafe-AWS-Deployment.tar.gz

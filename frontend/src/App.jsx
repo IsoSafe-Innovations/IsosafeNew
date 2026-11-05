@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import { useAuth } from './hooks/useAuth.jsx';
 import Admin from './views/Admin.jsx';
+import Benchmarks from './views/Benchmarks.jsx';
 import Alerts from './views/Alerts.jsx';
 import Analytics from './views/Analytics.jsx';
 import Assistant from './views/Assistant.jsx';
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/investigations" element={gate('/investigations', <Investigations />)} />
         <Route path="/assistant" element={gate('/assistant', <Assistant />)} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/benchmarks" element={<Benchmarks />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

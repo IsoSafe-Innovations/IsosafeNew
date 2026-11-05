@@ -12,6 +12,8 @@ Responsibilities:
 import asyncio
 import concurrent.futures
 import logging
+import os
+import multiprocessing
 import time
 
 import cv2
@@ -22,13 +24,16 @@ from app.alerts.dispatcher import run_dispatcher
 from app.analytics.jobs import run_hourly_aggregation_loop, run_nightly_loop
 from app.config import get_settings
 from app.db.engine import dispose, get_engine
-from app.db.tables import cameras as cameras_table
+from app.db.tables import cameras as cameras_table, upload_jobs
 from app.inference import worker as worker_mod
 from app.inference.writer import DetectionWriter
+from app.inference.options import resolve_options
+from app.inference.telemetry import AnalysisTelemetry
 from app.ingestion.health import CameraHealth
 from app.ingestion.streams import CameraStream, Frame
 from app.logging_config import setup_logging
 from app.metrics import INFERENCE_LATENCY
+from app.metrics import FRAMES_DROPPED
 from app.pipeline.camera_worker import CameraProcessor
 from app.pipeline.guards import run_resource_guards
 from app.security import decrypt_source
@@ -48,19 +53,21 @@ class Pipeline:
         self.writer = DetectionWriter()
         self.pool: concurrent.futures.ProcessPoolExecutor | None = None
         self.stop_event = asyncio.Event()
+        self._batch_cursor = 0
 
     # --- worker pool ---
 
     def _make_pool(self) -> concurrent.futures.ProcessPoolExecutor:
         s = self.settings
         return concurrent.futures.ProcessPoolExecutor(
+            mp_context=multiprocessing.get_context("spawn"),
             max_workers=s.inference_workers,
             initializer=worker_mod.init_worker,
             initargs=(s.yolo_model, s.yolo_device, s.person_confidence,
                       s.vehicle_confidence, s.inference_max_dim),
         )
 
-    async def _infer(self, jpeg_frames: list[bytes]) -> list[list[dict]]:
+    async def _infer(self, jpeg_frames: list[bytes], options=None) -> list[list[dict]]:
         """Run a batch in the pool; rebuild the pool once if it broke (worker crash)."""
         loop = asyncio.get_running_loop()
         for attempt in (1, 2):
@@ -68,16 +75,22 @@ class Pipeline:
                 self.pool = self._make_pool()
             try:
                 t0 = time.monotonic()
-                result = await loop.run_in_executor(
-                    self.pool, worker_mod.detect_batch, jpeg_frames
-                )
+                result = await asyncio.wait_for(loop.run_in_executor(
+                    self.pool, worker_mod.detect_batch, jpeg_frames, options
+                ),timeout=self.settings.inference_timeout_secs)
                 INFERENCE_LATENCY.observe(time.monotonic() - t0)
                 return result
-            except concurrent.futures.process.BrokenProcessPool:
+            except (concurrent.futures.process.BrokenProcessPool, TimeoutError):
                 log.error("inference pool broke (attempt %d), rebuilding", attempt)
+                # Terminate only this pipeline's owned workers. Cancelling a future
+                # alone cannot stop a stuck native inference call.
+                processes = list((getattr(self.pool,"_processes",None) or {}).values())
                 self.pool.shutdown(wait=False, cancel_futures=True)
+                for process in processes:
+                    if process.is_alive():
+                        process.terminate()
                 self.pool = None
-        return [[] for _ in jpeg_frames]
+        raise RuntimeError("Inference worker failed to initialize")
 
     # --- camera reconciliation ---
 
@@ -102,8 +115,14 @@ class Pipeline:
             return rows
 
         engine = get_engine()
+        query = sa.select(cameras_table)
+        if self.settings.pipeline_uploads_only:
+            query = query.where(sa.or_(
+                cameras_table.c.id.in_(sa.select(upload_jobs.c.camera_id)),
+                cameras_table.c.type == "youtube",
+            ))
         async with engine.connect() as conn:
-            rows = (await conn.execute(sa.select(cameras_table))).mappings().all()
+            rows = (await conn.execute(query)).mappings().all()
         return list(rows)
 
     async def reconcile(self) -> None:
@@ -115,7 +134,20 @@ class Pipeline:
 
         # stop removed/disabled cameras
         for cid in list(self.streams):
-            if cid not in enabled:
+            row = enabled.get(cid)
+            try:
+                source = decrypt_source(row["source"]) if row else None
+            except RuntimeError:
+                log.exception("cannot decrypt changed source", extra={"camera_id": cid})
+                continue
+            changed = row and (
+                self.streams[cid].source != source
+                or self.streams[cid].source_type != row["type"]
+                or self.streams[cid].loop_file != bool(row["loop_file"])
+                or self.streams[cid].refresh_secs != float(row["refresh_secs"] or 2)
+                or self.processors[cid].analysis_options != resolve_options(row.get("analysis_config"))
+            )
+            if cid not in enabled or changed:
                 log.info("stopping camera stream", extra={"camera_id": cid})
                 self.streams[cid].stop()
                 self.stream_tasks[cid].cancel()
@@ -152,7 +184,11 @@ class Pipeline:
             self.streams[cid] = stream
             self.processors[cid] = CameraProcessor(
                 cid, zones, rules, self.writer, source_type=row["type"],
+                analysis_config=row.get("analysis_config"),
             )
+            self.processors[cid].telemetry = AnalysisTelemetry(cid, self.processors[cid].analysis_options)
+            stream.analysis_health = self.processors[cid].telemetry
+            await stream.analysis_health.flush(force=True)
             self.stream_tasks[cid] = asyncio.create_task(stream.run())
             log.info("camera stream started", extra={"camera_id": cid})
 
@@ -172,16 +208,36 @@ class Pipeline:
     def _collect_batch(self) -> list[Frame]:
         """Grab at most one pending frame per camera, up to the batch size."""
         batch: list[Frame] = []
-        for stream in self.streams.values():
+        ids = list(self.streams)
+        if not ids:
+            return batch
+        ordered = ids[self._batch_cursor:] + ids[:self._batch_cursor]
+        self._batch_cursor = (self._batch_cursor + self.settings.inference_batch_size) % len(ids)
+        for cid in ordered:
+            stream = self.streams[cid]
             if len(batch) >= self.settings.inference_batch_size:
                 break
             try:
-                batch.append(stream.queue.get_nowait())
+                frame = stream.queue.get_nowait()
+                # A camera never consumes old backlog while fresh frames wait.
+                while not stream.queue.empty():
+                    frame = stream.queue.get_nowait()
+                    if stream.health:
+                        stream.health.frames_dropped += 1
+                    FRAMES_DROPPED.labels(camera_id=cid).inc()
+                if time.time()-frame.ts <= self.settings.max_analysis_frame_age_secs:
+                    batch.append(frame)
+                elif stream.health:
+                    stream.health.frames_dropped += 1
+                    FRAMES_DROPPED.labels(camera_id=cid).inc()
             except asyncio.QueueEmpty:
                 continue
         return batch
 
     async def _inference_loop(self) -> None:
+        if os.environ.get("INFERENCE_DEBUG_STACKS") == "1":
+            import faulthandler
+            faulthandler.dump_traceback_later(20,repeat=True)
         quality = [cv2.IMWRITE_JPEG_QUALITY, 85]
         while not self.stop_event.is_set():
             batch = self._collect_batch()
@@ -192,14 +248,34 @@ class Pipeline:
             for frame in batch:
                 ok, buf = cv2.imencode(".jpg", frame.image, quality)
                 jpegs.append(buf.tobytes() if ok else b"")
-            results = await self._infer(jpegs)
+            t0 = time.monotonic()
+            processors = {frame.camera_id:self.processors.get(frame.camera_id) for frame in batch}
+            try:
+                results = await self._infer(jpegs, [processors[f.camera_id].analysis_options for f in batch])
+            except Exception as exc:
+                log.exception("inference failed")
+                for frame in batch:
+                    proc = processors[frame.camera_id]
+                    if self.processors.get(frame.camera_id) is not proc:
+                        continue
+                    telemetry = proc.telemetry
+                    telemetry.state, telemetry.error = "error", type(exc).__name__
+                    await telemetry.flush(force=True)
+                await asyncio.sleep(1)
+                continue
+            inference_ms = (time.monotonic()-t0)*1000
             for frame, detections in zip(batch, results):
                 proc = self.processors.get(frame.camera_id)
-                if proc is None:
+                if proc is None or proc is not processors[frame.camera_id]:
                     continue
                 try:
                     await proc.process(frame.image, detections, frame.ts)
+                    proc.telemetry.dropped = self.streams[frame.camera_id].health.frames_dropped
+                    proc.telemetry.queue_depth = self.streams[frame.camera_id].queue.qsize()
+                    await proc.telemetry.record(frame.ts, inference_ms)
                 except Exception:
+                    proc.telemetry.state, proc.telemetry.error = "error", "Frame processing failed"
+                    await proc.telemetry.flush(force=True)
                     log.exception("frame processing failed",
                                   extra={"camera_id": frame.camera_id})
 
@@ -213,6 +289,20 @@ class Pipeline:
             asyncio.create_task(self._inference_loop(), name="inference"),
             asyncio.create_task(run_resource_guards(self.stop_event), name="guards"),
         ]
+        if os.environ.get("INFERENCE_DEBUG_STACKS") == "1":
+            async def diagnose():
+                while not self.stop_event.is_set():
+                    await asyncio.sleep(10)
+                    for task in [tasks[1], self.writer._task]:
+                        chain=[]
+                        coroutine=task.get_coro()
+                        while coroutine is not None:
+                            frame=getattr(coroutine,"cr_frame",None) or getattr(coroutine,"gi_frame",None)
+                            if frame:
+                                chain.append(f"{frame.f_code.co_name}:{frame.f_lineno}")
+                            coroutine=getattr(coroutine,"cr_await",None) or getattr(coroutine,"gi_yieldfrom",None)
+                        log.warning("task %s done=%s awaiting=%s",task.get_name(),task.done(),chain)
+            tasks.append(asyncio.create_task(diagnose(),name="diagnostics"))
         if self.settings.agent_mode:
             # The site agent keeps no local Postgres/Redis. Alert fan-out,
             # analytics rollups and nightly maintenance are cloud-side jobs;
@@ -244,6 +334,10 @@ class Pipeline:
             for task in [*self.stream_tasks.values(), *tasks]:
                 task.cancel()
             await self.writer.stop()
+            if self.settings.pipeline_uploads_only:
+                from app.agent.client import get_agent_client
+
+                await get_agent_client().stop_outbox()
             if self.pool:
                 self.pool.shutdown(wait=False, cancel_futures=True)
             await dispose()

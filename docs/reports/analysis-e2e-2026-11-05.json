@@ -1,0 +1,163 @@
+{
+  "source": "https://www.youtube.com/watch?v=Q71sLS8h9a4",
+  "checks": {
+    "camera created through authenticated API": {
+      "passed": true,
+      "detail": "cam-a6046e95"
+    },
+    "annotated frames delivered over browser WebSocket": {
+      "passed": true,
+      "detail": {
+        "frames": 114,
+        "first_frame_seconds": 23.34,
+        "max_people_in_frame": 1
+      }
+    },
+    "rule alerts delivered over browser WebSocket": {
+      "passed": true,
+      "detail": 9
+    },
+    "real model detections persisted and queryable": {
+      "passed": true,
+      "detail": {
+        "returned": 912,
+        "classes": [
+          "car",
+          "person",
+          "suitcase",
+          "truck"
+        ]
+      }
+    },
+    "tracks persist across frames": {
+      "passed": true,
+      "detail": {
+        "track_ids": 47,
+        "longest_observed_track_frames": 238
+      }
+    },
+    "zone assignments persisted": {
+      "passed": true,
+      "detail": null
+    },
+    "live counts available to dashboard": {
+      "passed": true,
+      "detail": {
+        "in_frame": {
+          "car": 2
+        },
+        "session": {
+          "car": 23,
+          "person": 3,
+          "suitcase": 1
+        },
+        "ts": 1793899994.3051233,
+        "crossings": {
+          "test-crossing:positive:car": 5
+        },
+        "counting_mode": "line_crossings"
+      }
+    },
+    "analysis camera health online": {
+      "passed": true,
+      "detail": {
+        "last_frame_ts": 1793899993.2645767,
+        "error": null,
+        "reconnect_count": 0,
+        "fps": 6.8,
+        "frames_dropped": 272,
+        "online": true
+      }
+    },
+    "actual analysis telemetry available": {
+      "passed": true,
+      "detail": {
+        "state": "running",
+        "error": null,
+        "last_result_ts": 1793899994.613908,
+        "frame_ts": 1793899994.3051233,
+        "processed_fps": 3.32,
+        "processed_frames": 241,
+        "inference_ms": 219.0,
+        "dropped_frames": 277,
+        "queue_depth": 2,
+        "ocr_state": "insufficient_detail",
+        "preset": "fast",
+        "tracker": "bytetrack",
+        "crossings": {
+          "test-crossing:positive:car": 5
+        },
+        "result_age_secs": 0.4,
+        "frame_age_secs": 0.7,
+        "ready": true
+      }
+    },
+    "live directional crossings persisted": {
+      "passed": true,
+      "detail": 5
+    },
+    "real rules create stored incidents": {
+      "passed": true,
+      "detail": {
+        "count": 9,
+        "types": [
+          "line_crossing",
+          "zone_intrusion"
+        ]
+      }
+    },
+    "annotated snapshot uploaded and fetched via presigned URL": {
+      "passed": true,
+      "detail": null
+    },
+    "heatmap cells recorded": {
+      "passed": true,
+      "detail": null
+    },
+    "hourly analytics available through dashboard API": {
+      "passed": true,
+      "detail": [
+        {
+          "camera_id": "cam-a6046e95",
+          "bucket": "2026-11-05T17:00:00+00:00",
+          "footfall": 13,
+          "vehicles": {
+            "car": 32,
+            "truck": 1
+          },
+          "avg_queue": 0.3333333432674408,
+          "max_queue": 2,
+          "avg_occupancy": 0.3333333432674408,
+          "incident_count": 9
+        }
+      ]
+    },
+    "reference clip writes real entry crossings": {
+      "passed": true,
+      "detail": {
+        "camera_id": "upload-d84a88337c5c4638801b8e436c79e57b",
+        "entries": 2
+      }
+    },
+    "entry-based footfall equals persisted crossings": {
+      "passed": true,
+      "detail": {
+        "entries": 2,
+        "footfall": 2
+      }
+    }
+  },
+  "limitations": [
+    "Live scene has no labeled ground truth; precision and recall are not established.",
+    "S3 delivery uses local Moto, not AWS; AWS permissions and expiry enforcement are not tested.",
+    "YouTube embedded playback is separate; browser UI was not exercised by this harness."
+  ],
+  "live_crossing_events": 5,
+  "crossing_fixture": "Local pedestrian reference video; live crossings are reported separately.",
+  "elapsed_seconds": 139.5,
+  "ocr": {
+    "plate_rows": 0,
+    "note": "No labeled plate sample; OCR accuracy is unverified."
+  },
+  "passed": true
+}

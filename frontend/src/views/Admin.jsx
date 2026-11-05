@@ -27,7 +27,7 @@ export default function Admin() {
 
   return (
     <>
-      <PageHeader title="Administration" subtitle="System health, users and footage" />
+      <PageHeader title="Administration" subtitle="System health, users and footage"><Link className="btn" to="/benchmarks">Accuracy checks</Link></PageHeader>
       <div className="tabs" role="tablist">
         {tabs.map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>

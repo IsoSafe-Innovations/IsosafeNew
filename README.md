@@ -62,6 +62,32 @@ first admin user is created automatically on first startup.
 
 ## Adding cameras
 
+For per-camera AI quality, tracking, plate reading, live analysis health, and
+accuracy checks, see [the analysis improvement guide](docs/analysis-improvements.md).
+
+Admins can use **Cameras → Add live link**, choose **YouTube live link**, and
+paste a public HTTPS watch/short/live video URL. The camera tile uses YouTube's
+embedded player for smooth playback, with muted autoplay, sound controls and
+full screen. Playback does not wait for inference. Server-side analysis uses
+yt-dlp to resolve a fresh stream on reconnect; the cloud `upload-worker` handles
+YouTube cameras as well as uploaded recordings. YouTube streams are excluded
+from on-site agents to avoid duplicate processing. Docker includes Node for
+yt-dlp's JavaScript solver; native installs also need Node 22+ on PATH.
+
+YouTube controls live latency, embedding, geographic restrictions and access.
+Private/restricted streams or YouTube bot checks may prevent analysis even when
+browser playback works. The UI reports analysis separately from playback.
+An initial real-link decoding check of `Q71sLS8h9a4` received a 1280×720 frame
+in 10.7 seconds (including URL resolution); this is startup time, not a measured
+end-to-end live delay or a performance guarantee.
+
+Operators and admins can use **Cameras → Upload video** to upload a recording
+(up to 500 MB by default), name it, and play it repeatedly as a camera source.
+The cloud stack includes an `upload-worker` service so website uploads run
+without an on-site agent. Uploads use server disk space and cloud CPU for
+detection; deleting an uploaded camera removes its video. The first video may
+take longer while the detection model downloads and initializes.
+
 1. **Cameras → Add camera** (admin role). Source types: `rtsp`
    (`rtsp://user:pass@ip:554/stream`), `snapshot_url` (HTTP JPEG polling), and
    `file` (looped playback for demos).

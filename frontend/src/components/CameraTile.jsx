@@ -1,6 +1,7 @@
 import { Car, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket.jsx';
+import AnalysisStatus from './AnalysisStatus.jsx';
 
 // Live camera tile. When `live` is true it subscribes to the frame stream;
 // otherwise it renders counts only (thumbnail mode). The video surface stays
@@ -41,7 +42,7 @@ export default function CameraTile({ camera, live = false, large = false, onClic
   const vehicles = (inFrame.car || 0) + (inFrame.truck || 0) + (inFrame.bus || 0) + (inFrame.motorcycle || 0);
   const risk = alertSeverity === 'critical' ? 'HIGH' : alertSeverity === 'warning' ? 'MED' : 'LOW';
   const riskColor = risk === 'HIGH' ? 'text-[#ff7b73]' : risk === 'MED' ? 'text-[#ffbf4d]' : 'text-[#5fdc9a]';
-  const activity = youtube && !online
+  const activity = youtube && !camera.analysis?.ready
     ? 'Analysis connecting…'
     : people > 0
       ? `${people} ${people === 1 ? 'person' : 'people'} in frame`
@@ -77,7 +78,7 @@ export default function CameraTile({ camera, live = false, large = false, onClic
               ) : (
                 <span className="ovtag !text-[#ff7b73]">OFFLINE</span>
               )}
-              {online && <span className={`ovtag ${riskColor}`}>RISK {risk}</span>}
+              {online && camera.analysis?.ready && <span className={`ovtag ${riskColor}`}>{alertSeverity ? `ALERT ${risk}` : 'NO ACTIVE ALERT'}</span>}
             </div>
             <div className="absolute bottom-2 left-2 pointer-events-none">
               <span className="ovtag">
@@ -92,10 +93,11 @@ export default function CameraTile({ camera, live = false, large = false, onClic
         <button onClick={onClick} className="flex items-baseline justify-between gap-2 px-0.5 text-left w-full">
           <span className="text-[13px] font-medium truncate">{camera.name}{youtube ? ' · YouTube' : ''}</span>
           <span className="text-[11.5px] text-muted whitespace-nowrap">
-            {counts.person != null && !people && !vehicles ? `${counts.person} today` : activity}
+            {counts.person != null && !people && !vehicles ? `${counts.person} tracks this session` : activity}
           </span>
         </button>
       )}
+      {caption && <AnalysisStatus camera={camera} />}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-# VITE_DEMO_MODE=1 bakes the Phase-1a demo UI (DEMO-FR-40) into the bundle.
-ARG VITE_DEMO_MODE=""
+# Phase 1a UI by default; override with --build-arg VITE_DEMO_MODE=0 for full v1 nav.
+ARG VITE_DEMO_MODE=1
 ENV VITE_DEMO_MODE=${VITE_DEMO_MODE}
 
 COPY package.json package-lock.json* ./

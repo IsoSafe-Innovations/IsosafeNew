@@ -12,12 +12,27 @@ cameras = sa.Table(
     sa.Column("source", sa.Text, nullable=False),  # encrypted at rest if credentials present
     sa.Column("type", sa.Text, nullable=False),  # rtsp | snapshot_url | file
     sa.Column("vertical_profile", sa.Text),
+    sa.Column("analysis_config", JSONB, nullable=False, server_default="{}"),
     sa.Column("zones", JSONB, nullable=False, server_default="[]"),
     sa.Column("rules", JSONB, nullable=False, server_default="[]"),
     sa.Column("refresh_secs", sa.REAL, server_default="2"),
     sa.Column("loop_file", sa.Boolean, server_default="true"),
     sa.Column("enabled", sa.Boolean, server_default="true"),
     sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()")),
+)
+
+crossing_events = sa.Table(
+    "crossing_events", metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("camera_id", sa.Text, nullable=False),
+    sa.Column("session_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("rule_id", sa.Text, nullable=False),
+    sa.Column("track_id", sa.Integer, nullable=False),
+    sa.Column("direction", sa.Text, nullable=False),
+    sa.Column("count_as", sa.Text, nullable=False),
+    sa.Column("object_type", sa.Text, nullable=False),
+    sa.Column("ts", sa.TIMESTAMP(timezone=True), nullable=False, index=True),
+    sa.UniqueConstraint("camera_id", "session_id", "rule_id", "track_id", "direction", name="uq_crossing_track"),
 )
 
 detections = sa.Table(
@@ -91,7 +106,7 @@ upload_jobs = sa.Table(
     sa.Column("id", UUID(as_uuid=True), primary_key=True),
     sa.Column("filename", sa.Text, nullable=False),
     sa.Column("camera_id", sa.Text),
-    sa.Column("status", sa.Text, server_default="pending"),  # pending, processing, done, error
+    sa.Column("status", sa.Text, server_default="pending"),  # pending, processing, ready, done, error
     sa.Column("error", sa.Text),
     sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()")),
     sa.Column("completed_at", sa.TIMESTAMP(timezone=True)),

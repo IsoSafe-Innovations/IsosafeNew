@@ -42,6 +42,7 @@ def build_heartbeat(streams: dict, uptime_s: float) -> dict[str, Any]:
                 "fps": round(float(health.fps), 2) if health else 0.0,
                 "reconnects": int(health.reconnect_count) if health else 0,
                 "dropped": int(health.frames_dropped) if health else 0,
+                **({"analysis": stream.analysis_health.snapshot()} if getattr(stream, "analysis_health", None) else {}),
             }
         )
 

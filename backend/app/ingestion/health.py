@@ -23,9 +23,13 @@ class CameraHealth:
     reconnect_count: int = 0
     _frame_times: list[float] = field(default_factory=list)
     _last_flush: float = 0.0
+    _last_frame_ts: float = 0.0
+    error: str | None = None
 
     async def record_frame(self) -> None:
         now = time.time()
+        self._last_frame_ts = now
+        self.error = None
         self._frame_times.append(now)
         cutoff = now - 10.0
         self._frame_times = [t for t in self._frame_times if t >= cutoff]
@@ -48,7 +52,8 @@ class CameraHealth:
         self._last_flush = now
         CAMERA_FPS.labels(camera_id=self.camera_id).set(self.fps)
         payload = {
-            "last_frame_ts": now,
+            "last_frame_ts": self._last_frame_ts,
+            "error": self.error,
             "reconnect_count": self.reconnect_count,
             "fps": self.fps,
             "frames_dropped": self.frames_dropped,
@@ -107,6 +112,9 @@ async def store_heartbeat(payload: dict) -> None:
             "source": "agent",
         }
         pipe.set(HEALTH_KEY_PREFIX + cid, json.dumps(cam_health), ex=180)
+        if cam.get("analysis"):
+            from app.inference.telemetry import ANALYSIS_KEY_PREFIX
+            pipe.set(ANALYSIS_KEY_PREFIX+cid, json.dumps(cam["analysis"]), ex=180)
     await pipe.execute()
 
 

@@ -1,8 +1,13 @@
-FROM python:3.11-slim
+FROM node:24-bookworm-slim AS javascript
+FROM python:3.11-slim-bookworm
+
+# yt-dlp's YouTube challenge solver needs a supported JavaScript runtime.
+COPY --from=javascript /usr/local/bin/node /usr/local/bin/node
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     YOLO_CONFIG_DIR=/data/models
+ENV OCR_MODEL_DIR=/data/models/ocr
 
 # Prefer IPv4 for apt: on IPv6-less Docker networks DNS returns AAAA records
 # only, and apt hangs on the unreachable IPv6 route instead of falling back.

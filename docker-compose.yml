@@ -84,6 +84,8 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        VITE_DEMO_MODE: ${VITE_DEMO_MODE:-1}
     restart: unless-stopped
     networks: [isosafe]
 

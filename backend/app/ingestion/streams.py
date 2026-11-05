@@ -15,6 +15,7 @@ import numpy as np
 
 from app.config import get_settings
 from app.ingestion.health import CameraHealth
+from app.ingestion.youtube import resolve_live
 from app.metrics import FRAMES_DROPPED, QUEUE_DEPTH
 
 log = logging.getLogger(__name__)
@@ -77,6 +78,10 @@ class CameraStream:
             try:
                 if self.source_type == "rtsp":
                     ok = await self._run_capture(self.source, realtime=True)
+                elif self.source_type == "youtube":
+                    # Resolve anew after disconnects: YouTube media URLs expire.
+                    source = await asyncio.to_thread(resolve_live, self.source)
+                    ok = await self._run_capture(source, realtime=True)
                 elif self.source_type == "file":
                     ok = await self._run_capture(self.source, realtime=False)
                     if ok and not self.loop_file:
@@ -90,6 +95,8 @@ class CameraStream:
                 raise
             except Exception:
                 log.exception("stream loop error", extra={"camera_id": self.camera_id})
+                if self.health and self.source_type == "youtube":
+                    self.health.error = "YouTube analysis connection failed; retrying automatically"
                 ok = False
 
             if self._stop.is_set():
@@ -101,7 +108,10 @@ class CameraStream:
             log.warning(
                 "stream ended, reconnecting in %ss", delay, extra={"camera_id": self.camera_id}
             )
-            await asyncio.sleep(delay)
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=delay)
+            except TimeoutError:
+                pass
 
     async def _run_capture(self, source: str, realtime: bool) -> bool:
         """RTSP or file playback via OpenCV. Returns True if it read frames successfully."""
@@ -141,7 +151,13 @@ class CameraStream:
                     self._enqueue(image)
                     if self.health:
                         await self.health.record_frame()
-                if realtime:
+                if self.source_type == "youtube":
+                    # HLS arrives in segments and OpenCV can decode a whole
+                    # segment in a burst. Pace at source FPS so tracking sees
+                    # regular motion instead of jumping several seconds at once.
+                    elapsed = time.monotonic() - t0
+                    await asyncio.sleep(max(0.0, frame_interval - elapsed))
+                elif realtime:
                     # RTSP delivers at source rate; yield so other tasks run.
                     await asyncio.sleep(0)
                 elif self.source_type == "file":
@@ -159,8 +175,11 @@ class CameraStream:
 
     def _open_capture(self, source: str) -> cv2.VideoCapture | None:
         try:
-            if self.source_type == "rtsp":
-                cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+            if self.source_type in {"rtsp", "youtube"}:
+                cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG, [
+                    cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000,
+                    cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000,
+                ])
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # always read the freshest frame
             else:
                 cap = cv2.VideoCapture(source)

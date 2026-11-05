@@ -8,7 +8,7 @@ from app.sinks.incidents import CloudIncidentSink, IncidentSink, LocalIncidentSi
 
 def get_incident_sink() -> IncidentSink:
     settings = get_settings()
-    if settings.agent_mode:
+    if settings.agent_mode or settings.pipeline_uploads_only:
         return CloudIncidentSink()
     return LocalIncidentSink()
 

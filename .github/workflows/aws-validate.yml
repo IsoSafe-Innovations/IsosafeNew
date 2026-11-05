@@ -51,7 +51,9 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.cloud.yml -f docker-compose.aws.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.cloud.yml -f docker-compose.aws.yml config --format json > /tmp/aws-compose.json
           jq -e '
-            (.services | keys) == ["backend", "frontend", "nginx", "postgres", "redis"] and
+            (.services | keys) == ["backend", "frontend", "nginx", "postgres", "redis", "upload-worker"] and
+            .services["upload-worker"].environment.PIPELINE_UPLOADS_ONLY == "1" and
+            .services["upload-worker"].environment.AGENT_MODE == "0" and
             .services.backend.environment.S3_ENDPOINT_URL == "" and
             .services.backend.environment.S3_ACCESS_KEY == "" and
             .services.backend.environment.S3_SECRET_KEY == "" and

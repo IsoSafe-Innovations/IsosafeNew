@@ -82,12 +82,15 @@ def schedule_active(schedule: dict | None, now: dt.datetime) -> bool:
 class CameraRuleEngine:
     """Evaluates one camera's rules against its tracks each processed frame."""
 
-    def __init__(self, camera_id: str, zones: list[dict], rules: list[dict]):
+    def __init__(self, camera_id: str, zones: list[dict], rules: list[dict], confirmation_frames: int = 1):
         self.camera_id = camera_id
         self.zones = {z["id"]: z for z in zones}
         self.rules = [r for r in rules if r.get("type") in RULE_TYPES]
         self.cooldowns: dict[str, float] = {}  # rule_id -> ts when cooldown ends
         self._frame_state: dict[str, dict] = {}  # rule-level (non-track) state
+        self.confirmation_frames = confirmation_frames
+        self.crossing_counts: dict[str, int] = {}
+        self.crossing_events: list[dict] = []
 
     def update_config(self, zones: list[dict], rules: list[dict]) -> None:
         self.zones = {z["id"]: z for z in zones}
@@ -117,14 +120,29 @@ class CameraRuleEngine:
 
             if not schedule_active(rule.get("schedule"), local_now):
                 continue
-            if self.cooldowns.get(rule_id, 0) > now:
-                continue
-
             handler = getattr(self, f"_eval_{rule['type']}", None)
             if handler is None:
                 continue
             try:
-                fire = handler(rule, rule_id, tracks, now, settings)
+                eligible = [t for t in tracks if t.hits >= rule.get("min_frames", self.confirmation_frames) and t.confident]
+                if rule["type"] != "line_crossing":
+                    for track in tracks:
+                        if not track.confident:
+                            track.rule_state.pop(rule_id, None)
+                for track in eligible:
+                    if rule["type"] != "line_crossing" and getattr(track, "observation_gap", 0) > rule.get("max_gap_seconds", 2):
+                        track.rule_state.pop(rule_id, None)
+                fire = handler(rule, rule_id, eligible, now, settings)
+                if rule["type"] in {"crowd_density", "queue_threshold", "after_hours_activity"}:
+                    state = self._frame_state.setdefault(rule_id, {"frames": 0, "last_ts":now})
+                    if now-state["last_ts"] > rule.get("max_gap_seconds",2):
+                        state["frames"] = 0
+                    state["last_ts"] = now
+                    state["frames"] = state["frames"] + 1 if fire else 0
+                    if state["frames"] < rule.get("min_frames", self.confirmation_frames):
+                        fire = None
+                if self.cooldowns.get(rule_id, 0) > now:
+                    fire = None
             except Exception:
                 log.exception("rule %s evaluation failed", rule_id,
                               extra={"camera_id": self.camera_id})
@@ -183,9 +201,12 @@ class CameraRuleEngine:
             if track.object_type != obj:
                 continue
             inside = self._in_zone(track, rule.get("zone_id"))
-            was_inside = track.rule_state.get(rule_id, False)
-            track.rule_state[rule_id] = inside
-            if inside and not was_inside:
+            state = track.rule_state.setdefault(rule_id, {"frames": 0, "fired": False})
+            state["frames"] = state["frames"] + 1 if inside else 0
+            if not inside:
+                state["fired"] = False
+            if inside and not state["fired"] and state["frames"] >= rule.get("min_frames", self.confirmation_frames):
+                state["fired"] = True
                 return RuleFire(
                     rule_id, "zone_intrusion", rule.get("severity", "critical"),
                     f"{obj.capitalize()} entered restricted zone "
@@ -239,19 +260,45 @@ class CameraRuleEngine:
         if not line:
             return None
         obj = rule.get("object", "person")
+        fire = None
         for track in tracks:
             if track.object_type != obj or len(track.history) < 2:
                 continue
+            if getattr(track, "observation_gap", 0) > rule.get("max_gap_seconds", 2):
+                if isinstance(track.rule_state.get(rule_id), dict):
+                    track.rule_state[rule_id]["anchor"] = track.centroid
+                continue
             prev = track.history[-2][1]
             curr = track.history[-1][1]
-            if crossed_line(prev, curr, line):
-                return RuleFire(
+            def side(point):
+                (x1,y1),(x2,y2) = line
+                length = max(math.hypot(x2-x1,y2-y1), 1e-6)
+                return ((x2-x1)*(point[1]-y1) - (y2-y1)*(point[0]-x1))/length
+            state = track.rule_state.setdefault(rule_id, {"anchor": prev, "seen": set()})
+            margin = rule.get("crossing_margin", .005)
+            if abs(side(curr)) < margin:
+                continue
+            anchor = state["anchor"]
+            if abs(side(anchor)) < margin:
+                state["anchor"] = curr
+                continue
+            direction = "positive" if side(curr) > 0 else "negative"
+            crossed = crossed_line(anchor, curr, line)
+            state["anchor"] = curr
+            if crossed and direction not in state["seen"] and rule.get("direction", "both") in {"both", direction}:
+                state["seen"].add(direction)
+                key = f"{rule_id}:{direction}:{obj}"
+                self.crossing_counts[key] = self.crossing_counts.get(key, 0) + 1
+                self.crossing_events.append({"rule_id": rule_id, "track_id": track.track_id,
+                    "direction": direction, "object_type": obj, "ts": now,
+                    "count_as": rule.get("count_as", "crossing")})
+                fire = fire or RuleFire(
                     rule_id, "line_crossing", rule.get("severity", "critical"),
-                    f"{obj.capitalize()} crossed perimeter line "
+                    f"{obj.capitalize()} crossed {direction} over perimeter line "
                     f"'{rule.get('zone_id')}'",
                     track,
                 )
-        return None
+        return fire
 
     def _eval_abandoned_object(self, rule, rule_id, tracks, now, settings):
         threshold = rule.get("threshold_seconds", 60)

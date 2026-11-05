@@ -1,6 +1,8 @@
 import { Link2, Plus, RadioTower, Trash2, Upload, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import CameraTile from '../components/CameraTile.jsx';
+import AnalysisStatus from '../components/AnalysisStatus.jsx';
+import AnalysisSettings from '../components/AnalysisSettings.jsx';
 import UploadCamera from '../components/UploadCamera.jsx';
 import ZoneEditor from '../components/ZoneEditor.jsx';
 import { Field, Modal, PageHeader, Segmented } from '../components/ui.jsx';
@@ -26,7 +28,7 @@ export default function Cameras() {
   const { hasRole } = useAuth();
   const isAdmin = hasRole('admin');
   const canUpload = hasRole('operator');
-  const { data: cameras, refresh } = usePolling('/api/cameras', 15000);
+  const { data: cameras, refresh } = usePolling('/api/cameras', 3000);
   const { data: profiles } = usePolling('/api/cameras/profiles', 600000, isAdmin);
   const [selectedId, setSelectedId] = useState(null);
   const [filter, setFilter] = useState('all');
@@ -290,7 +292,7 @@ export default function Cameras() {
 function HealthLabel({ cam }) {
   const h = cam.health;
   if (cam.type === 'youtube') {
-    return <span className={h?.online ? 'text-normal' : 'text-warning'}>{h?.online ? `● analysis ${h.fps} fps` : '● analysis connecting'}</span>;
+    return <AnalysisStatus camera={cam} />;
   }
   if (h?.online) return <span className="text-normal">● {h.fps} fps</span>;
   if (cam.is_upload && cam.enabled) return <span className="text-info">● waiting for playback</span>;
@@ -303,12 +305,13 @@ function HealthDetails({ camera }) {
     <div className="pane-section">
       <dl className="kv">
         <div><dt>Status</dt><dd>{h.online ? 'Streaming' : 'Not streaming'}</dd></div>
-        <div><dt>Frame rate</dt><dd className="font-mono">{h.fps ?? 0} fps</dd></div>
+        <div><dt>Ingestion rate</dt><dd className="font-mono">{h.fps ?? 0} fps</dd></div>
         <div><dt>Reconnects</dt><dd className="font-mono">{h.reconnect_count ?? 0}</dd></div>
         <div><dt>Dropped frames</dt><dd className="font-mono">{h.frames_dropped ?? 0}</dd></div>
         <div><dt>Rules</dt><dd>{camera.rules?.length ?? 0}</dd></div>
         <div><dt>Zones</dt><dd>{camera.zones?.length ?? 0}</dd></div>
       </dl>
+      <AnalysisStatus camera={camera} detailed />
       {h.error && <p className="alert-banner alert-error !text-xs">{h.error}</p>}
     </div>
   );
@@ -319,12 +322,13 @@ function CameraEditor({ camera, onSave, onDelete }) {
   const [zones, setZones] = useState(camera.zones || []);
   const [rules, setRules] = useState(camera.rules || []);
   const [enabled, setEnabled] = useState(camera.enabled);
+  const [analysis, setAnalysis] = useState(camera.analysis_config || {});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const addRule = (template) => {
     const id = `${template.type}-${Date.now().toString(36)}`;
-    setRules([...rules, { id, type: template.type, zone_id: null, cooldown_seconds: 120, ...template.fields }]);
+    setRules([...rules, { id, type: template.type, zone_id: null, cooldown_seconds: 120, min_frames: 3, ...(template.type === 'line_crossing' ? { direction:'both', count_as:'crossing' } : {}), ...template.fields }]);
   };
 
   const updateRule = (i, key, value) => {
@@ -336,7 +340,7 @@ function CameraEditor({ camera, onSave, onDelete }) {
   const save = async () => {
     setSaving(true);
     setSaved(false);
-    const ok = await onSave({ zones, rules, enabled });
+    const ok = await onSave({ zones, rules, enabled, analysis_config: analysis });
     setSaving(false);
     setSaved(ok);
   };
@@ -344,11 +348,12 @@ function CameraEditor({ camera, onSave, onDelete }) {
   return (
     <>
       <div className="tabs px-4" role="tablist">
-        {[['zones', `Zones · ${zones.length}`], ['rules', `Rules · ${rules.length}`], ['health', 'Health']].map(([k, l]) => (
+        {[['zones', `Zones · ${zones.length}`], ['rules', `Rules · ${rules.length}`], ['analysis', 'Analysis'], ['health', 'Health']].map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
       <div className="scroll">
+        {tab === 'analysis' && <div className="pane-section"><AnalysisSettings value={analysis} onChange={setAnalysis} zones={zones} /></div>}
         {tab === 'zones' && (
           <div className="pane-section">
             <ZoneEditor camera={camera} zones={zones} onChange={setZones} />
@@ -388,6 +393,7 @@ function CameraEditor({ camera, onSave, onDelete }) {
                   </select>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted">
+                  <label>Evidence frames<input aria-label="Rule evidence frames" type="number" min="1" max="30" value={rule.min_frames ?? 3} onChange={(e) => updateRule(i, 'min_frames', Math.max(1, Number(e.target.value) || 1))} className="input input-sm !w-16" /></label>
                   {rule.threshold_seconds != null && (
                     <label className="flex items-center gap-1.5">
                       <input type="number" value={rule.threshold_seconds}
@@ -407,6 +413,11 @@ function CameraEditor({ camera, onSave, onDelete }) {
                     <Trash2 size={13} /> Remove
                   </button>
                 </div>
+                {rule.type === 'line_crossing' && <div className="grid grid-cols-2 gap-2">
+                  <label className="text-xs">Count direction<select className="input input-sm" value={rule.direction || 'both'} onChange={(e) => updateRule(i,'direction',e.target.value)}><option value="both">Both directions</option><option value="positive">Negative to positive side</option><option value="negative">Positive to negative side</option></select></label>
+                  <label className="text-xs">Count as<select className="input input-sm" value={rule.count_as || 'crossing'} onChange={(e) => updateRule(i,'count_as',e.target.value)}><option value="crossing">Crossings only</option><option value="entry">Entry</option><option value="exit">Exit</option></select></label>
+                  <p className="text-xs text-muted col-span-2">For visitor counts choose one direction and mark it Entry. Use a second rule for Exit. Each confirmed track is counted once per direction, independently of alert cooldown.</p>
+                </div>}
               </div>
             ))}
             {rules.length === 0 && <p className="text-xs text-muted">No rules. This camera records detections but never alerts.</p>}

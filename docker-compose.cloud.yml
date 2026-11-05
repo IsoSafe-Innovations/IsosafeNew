@@ -23,6 +23,39 @@
 # docker-compose.demo.yml on top of this file and only changes host ports.
 
 services:
+  # Website uploads and YouTube analysis run independently of the site agent.
+  upload-worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.pipeline.runner"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-isosafe}:${POSTGRES_PASSWORD:-isosafe}@postgres:5432/${POSTGRES_DB:-isosafe}
+      REDIS_URL: redis://redis:6379/0
+      AGENT_MODE: "0"
+      PIPELINE_UPLOADS_ONLY: "1"
+      CLOUD_URL: http://backend:8000
+      INFERENCE_WORKERS: "1"
+      YOLO_DEVICE: cpu
+      YOLO_MODEL: /data/models/yolov8n.pt
+      YOLO_DETAIL_MODEL: /data/models/yolov8s.pt
+      INFERENCE_THREADS: "2"
+      DASHBOARD_MAX_FPS: "2"
+      WORKER_MEMORY_LIMIT_MB: "1536"
+      ROLE: upload-worker
+    volumes:
+      - media:/data/media
+      - upload-models:/data/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks: [isosafe]
+
   inference:
     profiles: ["inference"]
 
@@ -83,3 +116,4 @@ services:
 
 volumes:
   miniodata:
+  upload-models:

@@ -1,8 +1,6 @@
-// Demo build flag (DEMO-FR-40). Set at build time with VITE_DEMO_MODE=1.
-// In demo mode we hide v1-only surfaces that are not part of the first cloud
-// demo, per PRD Phase 1a §2.3 (Analytics, Reports, Investigations, AI
-// Assistant, Uploads).
-export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === '1';
+// Product UI scope (DEMO-FR-40). Default on via frontend/.env and Docker build.
+// Set VITE_DEMO_MODE=0 to restore full v1 navigation during development.
+export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== '0';
 
 const HIDDEN_IN_DEMO = new Set([
   '/analytics',

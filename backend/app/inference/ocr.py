@@ -9,6 +9,9 @@ import re
 
 import numpy as np
 
+from app.config import get_settings
+from app.inference.plates import locate_plate
+
 log = logging.getLogger(__name__)
 
 ALLOWLIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -26,9 +29,13 @@ def _get_reader():
         return None
     if _reader is None:
         import easyocr
+        import os
+        import torch
+        torch.set_num_threads(get_settings().inference_threads)
 
         try:
-            _reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+            _reader = easyocr.Reader(["en"], gpu=False, verbose=False,
+                model_storage_directory=os.environ.get("OCR_MODEL_DIR") or None)
         except Exception:
             log.exception("EasyOCR init failed — plate reading disabled")
             _reader_failed = True
@@ -59,14 +66,12 @@ async def read_plate(
     image: np.ndarray, bbox: list[float], min_conf: float
 ) -> tuple[str, float] | None:
     """Crop the vehicle region (normalized bbox) and OCR it."""
-    h, w = image.shape[:2]
-    x1 = max(0, int(bbox[0] * w))
-    y1 = max(0, int(bbox[1] * h))
-    x2 = min(w, int(bbox[2] * w))
-    y2 = min(h, int(bbox[3] * h))
-    if x2 - x1 < 40 or y2 - y1 < 20:
-        return None
-    crop = image[y1:y2, x1:x2]
+    def recognize():
+        settings = get_settings()
+        crop, _ = locate_plate(image, bbox, settings.plate_min_width, settings.plate_min_sharpness)
+        if crop is None:
+            return None
+        return _read_plate_sync(crop, max(.65, min_conf))
     loop = asyncio.get_running_loop()
     async with _lock:  # EasyOCR reader is not thread-safe across concurrent calls
-        return await loop.run_in_executor(None, _read_plate_sync, crop, min_conf)
+        return await loop.run_in_executor(None, recognize)

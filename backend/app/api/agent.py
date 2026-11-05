@@ -101,11 +101,18 @@ async def get_config(request: Request):
     # Return camera configs - reuse existing cameras logic
     from sqlalchemy import select
 
-    from app.db.tables import cameras as cameras_table
+    from app.db.tables import cameras as cameras_table, upload_jobs
 
     engine = get_engine()
     async with engine.connect() as conn:
-        rows = (await conn.execute(select(cameras_table).order_by(cameras_table.c.created_at))).mappings().all()
+        # Uploaded files belong to the cloud worker's shared media volume.
+        query = select(cameras_table).where(
+            cameras_table.c.type != "youtube",
+            ~select(upload_jobs.c.id).where(
+                upload_jobs.c.camera_id == cameras_table.c.id
+            ).exists()
+        ).order_by(cameras_table.c.created_at)
+        rows = (await conn.execute(query)).mappings().all()
         cameras = []
         for r in rows:
             cameras.append({
@@ -116,6 +123,7 @@ async def get_config(request: Request):
                 "source": decrypt_source(r["source"]),
                 "type": r["type"],
                 "vertical_profile": r["vertical_profile"],
+                "analysis_config": r.get("analysis_config") or {},
                 "zones": r["zones"] or [],
                 "rules": r["rules"] or [],
                 "refresh_secs": r["refresh_secs"],

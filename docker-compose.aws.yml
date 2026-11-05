@@ -17,6 +17,19 @@
 #     first_deploy overrides them with the defaults and builds in place.
 
 services:
+  upload-worker:
+    image: ${ISOSAFE_BACKEND_IMAGE:-isosafe-backend:local}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${S3_REGION:-us-east-1}
+        awslogs-group: ${AWS_LOG_GROUP:?set AWS_LOG_GROUP from Terraform application_log_group}
+        awslogs-stream: upload-worker
+        mode: non-blocking
+        max-buffer-size: 4m
+
   postgres:
     logging: &cloud_logs
       driver: awslogs

@@ -49,6 +49,7 @@ errors are **422** with FastAPI's standard `detail` array or a string.
 | GET | `/api/heatmap/{camera_id}` | viewer | Latest heatmap grid |
 | GET | `/api/overview` | viewer | Dashboard KPIs |
 | POST | `/api/uploads` | operator | Upload footage |
+| GET | `/api/uploads/config` | operator | Upload size limit and extensions |
 | GET | `/api/uploads/{job_id}` | operator | Upload job status |
 | POST | `/api/search` | viewer | Natural-language search |
 | GET | `/api/insights` | viewer | Cached AI insights |
@@ -346,23 +347,51 @@ Days are UTC.
 
 ## Uploads
 
+Camera create/patch requests also accept `analysis_config`, for example:
+
+```json
+{"analysis_config":{"preset":"fast","tracker":"bytetrack","person_confidence":0.4,"confirmation_frames":3,"regions":[{"x1":0.38,"y1":0.25,"x2":0.68,"y2":0.42}]}}
+```
+
+Presets: `fast`, `balanced`, `detail`. Trackers: `centroid`, `bytetrack`,
+`botsort`. Other options: `input_size` (640/960/1280), `tiled`,
+`vehicle_confidence`, and `plate_reading`. Camera list responses contain
+`analysis` with actual processing state, readiness, processed FPS, frame/result
+age, batch duration, queue/drop counts and OCR state; `health.fps` remains the
+ingestion sample rate. Apply migration `0003_camera_analysis` before using these
+fields against an existing database. See [analysis improvements](analysis-improvements.md)
+for counting semantics, benchmarks, verification results and limits.
+
+YouTube cameras use `POST /api/cameras` (admin) with
+`{"name":"Live street","type":"youtube","source":"https://www.youtube.com/watch?v=Q71sLS8h9a4"}`.
+The API validates and canonicalizes the URL without waiting for YouTube extraction.
+Camera responses include `youtube_id` for the browser player. The cloud worker
+resolves the live stream separately for analysis and refreshes expiring stream
+URLs after disconnects. `health.online` describes analysis frame reception,
+independently of embedded player playback; `health.error` reports connection failures.
+
 ### `POST /api/uploads` (operator) → 202
 
-`multipart/form-data` with field `file`. Extensions: `.mp4 .avi .mov .mkv .webm`.
+`multipart/form-data` with field `file` and optional `name` (max 120 characters).
+Extensions: `.mp4 .avi .mov .mkv .webm`. The server verifies a decodable frame.
 Max `UPLOAD_MAX_MB` (500); nginx allows bodies up to 512 MB.
 
 ```json
-{"job_id": "0f3c5d7e-…", "camera_id": "upload-0f3c5d7e", "status": "processing"}
+{"job_id": "0f3c5d7e-…", "camera_id": "upload-0f3c5d7e…", "status": "ready"}
 ```
 
-**422** unsupported extension; **413** too large. The file becomes a single-pass
-`file` camera picked up within 15 s.
+**422** unsupported, empty or unreadable video; **413** too large; **409** camera
+capacity reached; **507** insufficient disk space. The file becomes a looping
+`file` camera picked up within 15 s, plus initial model startup time. `ready`
+means the file is validated and registered, not that playback has started.
+Cloud stacks run `upload-worker` against the shared media volume; site agents
+exclude uploaded cameras. Camera deletion also removes the upload record and file.
 
 ### `GET /api/uploads/{job_id}` (operator)
 
 ```json
 {"id": "0f3c5d7e-…", "filename": "lobby.mp4", "camera_id": "upload-0f3c5d7e",
- "status": "processing", "error": null, "created_at": "…", "completed_at": null}
+ "status": "ready", "error": null, "created_at": "…", "completed_at": "…"}
 ```
 
 ---

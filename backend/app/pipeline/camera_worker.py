@@ -1,13 +1,18 @@
 """Per-camera processing state: tracker, rule engine, zone tagging, OCR cadence,
 heatmap grid, and live count publishing."""
+import asyncio
 import logging
 import time
+import uuid
 
 import numpy as np
 
 from app.config import get_settings
 from app.inference.ocr import DEDUP_SECONDS, read_plate
-from app.inference.tracker import CentroidTracker
+from app.inference.advanced_tracker import make_tracker
+from app.inference.options import resolve_options
+from app.inference.plates import PlateConsensus
+from app.inference.telemetry import AnalysisTelemetry
 from app.inference.worker import VEHICLE_TYPES
 from app.inference.writer import DetectionWriter
 from app.metrics import FRAMES_PROCESSED
@@ -22,16 +27,25 @@ HEATMAP_GRID = 32
 
 class CameraProcessor:
     def __init__(self, camera_id: str, zones: list[dict], rules: list[dict],
-                 writer: DetectionWriter, source_type: str = "rtsp"):
+                 writer: DetectionWriter, source_type: str = "rtsp", analysis_config: dict | None = None):
         self.camera_id = camera_id
         self.source_type = source_type
         self.zones = zones
-        self.tracker = CentroidTracker()
-        self.engine = CameraRuleEngine(camera_id, zones, rules)
+        self.analysis_options = resolve_options(analysis_config)
+        self.tracker = make_tracker(self.analysis_options)
+        self.engine = CameraRuleEngine(camera_id, zones, rules, self.analysis_options["confirmation_frames"])
+        self.telemetry = AnalysisTelemetry(camera_id, self.analysis_options)
         self.writer = writer
         self._processed_frames = 0
         self._last_counts_flush = 0.0
         self._last_frame_publish = 0.0
+        self._ocr_task: asyncio.Task | None = None
+        self._ocr_track_id: int | None = None
+        self._plate_results: dict[int, tuple[str, float, float]] = {}
+        self._plate_consensus = {}
+        self._ocr_capture_ts = None
+        self._ocr_scheduled_at = None
+        self.tracking_session = uuid.uuid4()
 
     def update_config(self, zones: list[dict], rules: list[dict]) -> None:
         self.zones = zones
@@ -57,31 +71,69 @@ class CameraProcessor:
         FRAMES_PROCESSED.labels(camera_id=self.camera_id).inc()
 
         tracks = self.tracker.update(detections, now=ts)
+        # OCR can download models or take seconds on CPU. Keep one job in flight
+        # per camera, without blocking detection, rules, or other cameras.
+        if self._ocr_task is not None and self._ocr_task.done():
+            try:
+                result = self._ocr_task.result()
+                if result:
+                    text, confidence = result
+                    consensus = self._plate_consensus.setdefault(self._ocr_track_id, PlateConsensus(get_settings().plate_consensus_reads))
+                    agreed = consensus.add(text, confidence, self._ocr_capture_ts)
+                    if agreed:
+                        self._plate_results[self._ocr_track_id] = (*agreed, ts)
+                    self.telemetry.ocr_state = "confirmed" if agreed else "waiting_for_consensus"
+                else:
+                    self.telemetry.ocr_state = "insufficient_detail"
+            except Exception:
+                self.telemetry.ocr_state = "error"
+                log.exception("background plate reading failed", extra={"camera_id": self.camera_id})
+            self._ocr_task = None
+        self._plate_consensus = {tid: c for tid,c in self._plate_consensus.items() if tid in self.tracker.tracks}
+        self._plate_results = {
+            tid: result for tid, result in self._plate_results.items()
+            if ts - result[2] < DEDUP_SECONDS and tid in self.tracker.tracks
+        }
 
         # Zone tagging + detection rows
         for det, track in zip(detections, tracks):
+            if track is None:
+                continue
             zone_ids = zones_containing(track.centroid, self.zones)
             plate_text = None
             plate_conf = None
+            pending = self._plate_results.pop(track.track_id, None)
+            if pending:
+                text, conf, _ = pending
+                if not (track.last_plate == text and ts - track.last_plate_ts < DEDUP_SECONDS):
+                    plate_text, plate_conf = text, conf
+                    track.last_plate, track.last_plate_ts = text, ts
             if (
                 track.object_type in VEHICLE_TYPES
                 and self._processed_frames % settings.ocr_every_n_frames == 0
+                and self._ocr_task is None
+                and self.analysis_options["plate_reading"]
             ):
-                result = await read_plate(image, track.bbox, settings.plate_confidence)
-                if result:
-                    text, conf = result
-                    # per-track dedup within 60s
-                    if not (track.last_plate == text and ts - track.last_plate_ts < DEDUP_SECONDS):
-                        plate_text, plate_conf = text, conf
-                        track.last_plate = text
-                        track.last_plate_ts = ts
+                self._ocr_track_id = track.track_id
+                self._ocr_capture_ts = ts
+                self._ocr_scheduled_at = time.monotonic()
+                self.telemetry.ocr_state = "busy"
+                self._ocr_task = asyncio.create_task(
+                    read_plate(image, list(track.bbox), settings.plate_confidence)
+                )
             await self.writer.add(
                 self.camera_id, ts, track.object_type, det["confidence"],
                 track.track_id, track.bbox, zone_ids, plate_text, plate_conf,
             )
 
         # Rules
+        tracks = [t for t in tracks if t is not None and t.hits >= self.analysis_options["confirmation_frames"]]
         fires = self.engine.evaluate(tracks, now=ts)
+        for event in self.engine.crossing_events:
+            event["session_id"] = self.tracking_session
+            await self.writer.add_crossing(self.camera_id, event)
+        self.engine.crossing_events.clear()
+        self.telemetry.crossings = self.engine.crossing_counts
         for fire in fires:
             try:
                 sink = get_incident_sink()
@@ -123,6 +175,8 @@ class CameraProcessor:
             "in_frame": in_frame,
             "session": dict(self.tracker.session_counts),
             "ts": ts,
+            "crossings": dict(self.engine.crossing_counts),
+            "counting_mode": "line_crossings" if any(r.get("type") == "line_crossing" for r in self.engine.rules) else "confirmed_tracks",
         }
         now = time.time()
         if now - self._last_counts_flush >= 1.0:

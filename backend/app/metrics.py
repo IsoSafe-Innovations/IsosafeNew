@@ -30,3 +30,5 @@ CAMERA_FPS = Gauge("isosafe_camera_fps", "Achieved processed FPS per camera", ["
 STREAM_RECONNECTS = Counter(
     "isosafe_stream_reconnects_total", "Stream reconnect attempts", ["camera_id"]
 )
+ANALYSIS_FPS = Gauge("isosafe_analysis_fps", "Completed analysis frames per second", ["camera_id"])
+ANALYSIS_FRAME_AGE = Gauge("isosafe_analysis_frame_age_seconds", "Age of received frame at analysis completion", ["camera_id"])

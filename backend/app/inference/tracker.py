@@ -24,6 +24,9 @@ class Track:
     first_seen: float
     last_seen: float
     frames_missing: int = 0
+    hits: int = 1
+    observation_gap: float = 0
+    confident: bool = True
     history: deque = field(default_factory=lambda: deque(maxlen=MAX_HISTORY))
     last_plate: str | None = None
     last_plate_ts: float = 0.0
@@ -40,10 +43,12 @@ def _centroid(bbox: list[float]) -> tuple[float, float]:
 
 
 class CentroidTracker:
-    def __init__(self) -> None:
+    def __init__(self, confirmation_frames: int = 1) -> None:
         self._next_id = itertools.count(1)
         self.tracks: dict[int, Track] = {}
         self.session_counts: dict[str, int] = {}  # object_type -> unique tracks seen
+        self.confirmation_frames = confirmation_frames
+        self._counted: set[int] = set()
 
     def update(self, detections: list[dict], now: float | None = None) -> list[Track]:
         """Match detections to tracks. Returns the list of active (matched or new) tracks
@@ -80,8 +85,10 @@ class CentroidTracker:
                 track = det_to_track[i]
                 track.centroid = c
                 track.bbox = det["bbox"]
+                track.observation_gap = now - track.last_seen
                 track.last_seen = now
                 track.frames_missing = 0
+                track.hits += 1
             else:
                 track = Track(
                     track_id=next(self._next_id),
@@ -92,8 +99,9 @@ class CentroidTracker:
                     last_seen=now,
                 )
                 self.tracks[track.track_id] = track
-                key = det["object_type"]
-                self.session_counts[key] = self.session_counts.get(key, 0) + 1
+            if track.hits >= self.confirmation_frames and track.track_id not in self._counted:
+                self.session_counts[track.object_type] = self.session_counts.get(track.object_type, 0) + 1
+                self._counted.add(track.track_id)
             track.history.append((now, c))
             det["track_id"] = track.track_id
             matched_tracks.append(track)
@@ -105,6 +113,7 @@ class CentroidTracker:
                 self.tracks[tid].frames_missing += 1
                 if self.tracks[tid].frames_missing > EXPIRE_AFTER_FRAMES:
                     del self.tracks[tid]
+                    self._counted.discard(tid)
 
         return matched_tracks
 

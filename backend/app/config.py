@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # Detection thresholds
     vehicle_confidence: float = Field(default=0.35, alias="VEHICLE_CONFIDENCE")
     person_confidence: float = Field(default=0.40, alias="PERSON_CONFIDENCE")
-    plate_confidence: float = Field(default=0.20, alias="PLATE_CONFIDENCE")
+    plate_confidence: float = Field(default=0.65, alias="PLATE_CONFIDENCE")
 
     # Pipeline cadence
     process_every_n_frames: int = Field(default=3, alias="PROCESS_EVERY_N_FRAMES")
@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     file_playback_fps: float = Field(default=0.0, alias="FILE_PLAYBACK_FPS")
     inference_batch_size: int = Field(default=8, alias="INFERENCE_BATCH_SIZE")
     inference_max_dim: int = Field(default=640, alias="INFERENCE_MAX_DIM")
+    # Cloud worker reads only website uploads from the shared media volume.
+    pipeline_uploads_only: bool = Field(default=False, alias="PIPELINE_UPLOADS_ONLY")
 
     # Retention
     retention_detections_days: int = Field(default=90, alias="RETENTION_DETECTIONS_DAYS")
@@ -54,6 +56,13 @@ class Settings(BaseSettings):
     # Models
     yolo_model: str = Field(default="yolov8n.pt", alias="YOLO_MODEL")
     yolo_device: str = Field(default="cpu", alias="YOLO_DEVICE")
+    yolo_detail_model: str = Field(default="yolov8s.pt", alias="YOLO_DETAIL_MODEL")
+    inference_threads: int = Field(default=2, ge=1, le=32, alias="INFERENCE_THREADS")
+    inference_timeout_secs: float = Field(default=45, ge=5, le=300, alias="INFERENCE_TIMEOUT_SECS")
+    max_analysis_frame_age_secs: float = Field(default=3, ge=.1, alias="MAX_ANALYSIS_FRAME_AGE_SECS")
+    plate_min_width: int = Field(default=64, ge=32, alias="PLATE_MIN_WIDTH")
+    plate_min_sharpness: float = Field(default=60, ge=0, alias="PLATE_MIN_SHARPNESS")
+    plate_consensus_reads: int = Field(default=3, ge=2, le=10, alias="PLATE_CONSENSUS_READS")
 
     # Alerts
     smtp_host: str = Field(default="", alias="SMTP_HOST")

@@ -23,61 +23,45 @@ AGGREGATION_INTERVAL = 300  # 5 minutes
 HEATMAP_GRID = 32
 
 HOURLY_UPSERT = sa.text("""
-INSERT INTO analytics_hourly
-  (camera_id, bucket, footfall, vehicles, avg_queue, max_queue, avg_occupancy, incident_count)
-SELECT
-  d.camera_id,
-  date_trunc('hour', d.ts) AS bucket,
-  COUNT(DISTINCT d.track_id) FILTER (WHERE d.object_type = 'person') AS footfall,
-  COALESCE(veh.vehicles, '{}'::jsonb) AS vehicles,
-  COALESCE(q.avg_queue, 0),
-  COALESCE(q.max_queue, 0),
-  COALESCE(o.avg_occupancy, 0),
-  COALESCE(i.incident_count, 0)
-FROM detections d
-LEFT JOIN LATERAL (
-    SELECT jsonb_object_agg(v.object_type, v.cnt) AS vehicles FROM (
-        SELECT d2.object_type, COUNT(DISTINCT d2.track_id) AS cnt
-        FROM detections d2
-        WHERE d2.camera_id = d.camera_id
-          AND date_trunc('hour', d2.ts) = date_trunc('hour', d.ts)
-          AND d2.object_type IN ('car','motorcycle','bus','truck')
-        GROUP BY d2.object_type
-     ) v
-) veh ON true
-LEFT JOIN LATERAL (
-    SELECT AVG(c)::real AS avg_queue, MAX(c)::int AS max_queue FROM (
-      SELECT COUNT(*) AS c FROM detections dq
-      WHERE dq.camera_id = d.camera_id
-        AND date_trunc('hour', dq.ts) = date_trunc('hour', d.ts)
-        AND dq.object_type = 'person' AND dq.zone_ids IS NOT NULL
-      GROUP BY date_trunc('second', dq.ts)
-    ) s
-) q ON true
-LEFT JOIN LATERAL (
-    SELECT AVG(c)::real AS avg_occupancy FROM (
-      SELECT COUNT(DISTINCT do2.track_id) AS c FROM detections do2
-      WHERE do2.camera_id = d.camera_id
-        AND date_trunc('hour', do2.ts) = date_trunc('hour', d.ts)
-        AND do2.object_type = 'person'
-      GROUP BY date_trunc('minute', do2.ts)
-    ) s
-) o ON true
-LEFT JOIN LATERAL (
-    SELECT COUNT(*)::int AS incident_count FROM incidents ic
-    WHERE ic.camera_id = d.camera_id
-      AND date_trunc('hour', ic.ts) = date_trunc('hour', d.ts)
-) i ON true
-WHERE d.ts >= :bucket_start AND d.ts < :bucket_end
-GROUP BY d.camera_id, date_trunc('hour', d.ts), q.avg_queue, q.max_queue,
-         o.avg_occupancy, i.incident_count
-ON CONFLICT (camera_id, bucket) DO UPDATE SET
-  footfall = EXCLUDED.footfall,
-  vehicles = EXCLUDED.vehicles,
-  avg_queue = EXCLUDED.avg_queue,
-  max_queue = EXCLUDED.max_queue,
-  avg_occupancy = EXCLUDED.avg_occupancy,
-  incident_count = EXCLUDED.incident_count
+WITH base AS (
+ SELECT camera_id,date_trunc('hour',ts) AS bucket,
+ COUNT(DISTINCT track_id) FILTER (WHERE object_type='person') AS footfall
+ FROM detections WHERE ts>=:bucket_start AND ts<:bucket_end
+ GROUP BY camera_id,date_trunc('hour',ts)
+), vehicle_types AS (
+ SELECT camera_id,date_trunc('hour',ts) AS bucket,object_type,COUNT(DISTINCT track_id) AS cnt
+ FROM detections WHERE ts>=:bucket_start AND ts<:bucket_end AND object_type IN ('car','motorcycle','bus','truck')
+ GROUP BY camera_id,date_trunc('hour',ts),object_type
+), vehicles AS (
+ SELECT camera_id,bucket,jsonb_object_agg(object_type,cnt) AS vehicles FROM vehicle_types GROUP BY camera_id,bucket
+), samples AS (
+ SELECT camera_id,date_trunc('hour',ts) AS bucket,date_trunc('second',ts) AS sample,
+ COUNT(DISTINCT track_id) FILTER (WHERE object_type='person') AS people,
+ COUNT(DISTINCT track_id) FILTER (WHERE object_type='person' AND cardinality(zone_ids)>0) AS queued
+ FROM detections WHERE ts>=:bucket_start AND ts<:bucket_end
+ GROUP BY camera_id,date_trunc('hour',ts),date_trunc('second',ts)
+), occupancy AS (
+ SELECT camera_id,bucket,AVG(people)::real AS avg_occupancy,AVG(queued)::real AS avg_queue,MAX(queued)::int AS max_queue
+ FROM samples GROUP BY camera_id,bucket
+), alerts AS (
+ SELECT camera_id,date_trunc('hour',ts) AS bucket,COUNT(*)::int AS cnt
+ FROM incidents WHERE ts>=:bucket_start AND ts<:bucket_end GROUP BY camera_id,date_trunc('hour',ts)
+), entries AS (
+ SELECT camera_id,date_trunc('hour',ts) AS bucket,COUNT(*) AS cnt
+ FROM crossing_events WHERE ts>=:bucket_start AND ts<:bucket_end AND count_as='entry' AND object_type='person'
+ GROUP BY camera_id,date_trunc('hour',ts)
+)
+INSERT INTO analytics_hourly (camera_id,bucket,footfall,vehicles,avg_queue,max_queue,avg_occupancy,incident_count)
+SELECT b.camera_id,b.bucket,
+ CASE WHEN EXISTS (
+ SELECT 1 FROM cameras c,jsonb_array_elements(c.rules) r
+ WHERE c.id=b.camera_id AND r->>'type'='line_crossing' AND r->>'count_as'='entry' AND COALESCE(r->>'object','person')='person'
+ ) THEN COALESCE(e.cnt,0) ELSE b.footfall END,
+ COALESCE(v.vehicles,'{}'::jsonb),COALESCE(o.avg_queue,0),COALESCE(o.max_queue,0),COALESCE(o.avg_occupancy,0),COALESCE(a.cnt,0)
+FROM base b LEFT JOIN vehicles v USING(camera_id,bucket) LEFT JOIN occupancy o USING(camera_id,bucket)
+LEFT JOIN alerts a USING(camera_id,bucket) LEFT JOIN entries e USING(camera_id,bucket)
+ON CONFLICT (camera_id,bucket) DO UPDATE SET footfall=EXCLUDED.footfall,vehicles=EXCLUDED.vehicles,
+ avg_queue=EXCLUDED.avg_queue,max_queue=EXCLUDED.max_queue,avg_occupancy=EXCLUDED.avg_occupancy,incident_count=EXCLUDED.incident_count
 """)
 
 DAILY_ROLLUP = sa.text("""
