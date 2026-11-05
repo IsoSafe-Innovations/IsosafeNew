@@ -1,6 +1,7 @@
 import { Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket.jsx';
+import { CHART } from '../lib/format';
 
 // Draw polygon zones (click to add points, double-click to close) or a 2-point
 // line over a live frame. Coordinates are stored normalized (0..1).
@@ -76,21 +77,21 @@ export default function ZoneEditor({ camera, zones, onChange }) {
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <select value={mode} onChange={(e) => { setMode(e.target.value); setDrawing([]); }}
-                className="bg-surface-900 border border-surface-600 rounded-md px-2 py-1.5 text-sm">
+                className="input !w-auto">
           <option value="polygon">Polygon zone</option>
           <option value="line">Perimeter line</option>
         </select>
         <input
           value={name} onChange={(e) => setName(e.target.value)}
           placeholder="Zone name (e.g. gate, queue, restricted)"
-          className="bg-surface-900 border border-surface-600 rounded-md px-2 py-1.5 text-sm flex-1 min-w-40"
+          className="input flex-1 min-w-40 !w-auto"
         />
         {drawing.length > 0 && (
           <>
-            <button onClick={() => finishZone()} className="text-sm px-3 py-1.5 rounded-md bg-info text-white">
+            <button onClick={() => finishZone()} className="btn btn-primary">
               Finish ({drawing.length} pts)
             </button>
-            <button onClick={() => setDrawing([])} className="text-sm px-3 py-1.5 rounded-md bg-surface-700">
+            <button onClick={() => setDrawing([])} className="btn">
               Cancel
             </button>
           </>
@@ -101,38 +102,38 @@ export default function ZoneEditor({ camera, zones, onChange }) {
         ref={containerRef}
         onClick={handleClick}
         onDoubleClick={() => mode === 'polygon' && finishZone()}
-        className="relative aspect-video bg-black rounded-lg overflow-hidden cursor-crosshair border border-surface-600"
+        className="feed relative aspect-video cursor-crosshair"
       >
         {frame ? (
           <img src={`data:image/jpeg;base64,${frame}`} alt="" className="w-full h-full object-fill select-none" draggable={false} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-slate-600 text-sm">
+          <div className="feed-empty">
             Waiting for live frame… (the pipeline must be running)
           </div>
         )}
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {zones.map((z) => renderShape(z, '#3b82f6'))}
+          {zones.map((z) => renderShape(z, CHART.accent))}
           {drawing.length > 0 && renderShape(
             mode === 'line' ? { id: '_d', line: [...drawing, ...drawing].slice(0, 2) } : { id: '_d', polygon: drawing },
-            '#f59e0b'
+            CHART.warn
           )}
           {drawing.map(([x, y], i) => (
-            <circle key={i} cx={x * 100} cy={y * 100} r={0.8} fill="#f59e0b" />
+            <circle key={i} cx={x * 100} cy={y * 100} r={0.8} fill={CHART.warn} />
           ))}
         </svg>
       </div>
 
       <div className="flex flex-wrap gap-2">
         {zones.map((z) => (
-          <span key={z.id} className="flex items-center gap-1.5 text-xs bg-surface-900 border border-surface-600 rounded-full px-2.5 py-1">
+          <span key={z.id} className="tag !rounded-full">
             {z.name || z.id}
-            <span className="text-slate-600">{z.line ? 'line' : `${z.polygon?.length} pts`}</span>
-            <button onClick={() => removeZone(z.id)} className="text-slate-500 hover:text-critical">
+            <span className="text-muted">{z.line ? 'line' : `${z.polygon?.length} pts`}</span>
+            <button onClick={() => removeZone(z.id)} className="text-muted hover:text-critical" aria-label={`Remove ${z.name || z.id}`}>
               <Trash2 size={12} />
             </button>
           </span>
         ))}
-        {zones.length === 0 && <p className="text-xs text-slate-600">No zones drawn. Click on the frame to start.</p>}
+        {zones.length === 0 && <p className="text-xs text-muted">No zones drawn. Click on the frame to start.</p>}
       </div>
     </div>
   );

@@ -1,20 +1,37 @@
-export const SEVERITY_COLORS = {
-  normal: 'text-normal',
-  info: 'text-info',
-  warning: 'text-warning',
-  critical: 'text-critical',
+// Severity → component classes from index.css.
+export const SEVERITY_CLASS = {
+  info: 'sev sev-info',
+  warning: 'sev sev-warning',
+  critical: 'sev sev-critical',
 };
 
-export const SEVERITY_BG = {
-  info: 'bg-info/15 text-info border-info/30',
-  warning: 'bg-warning/15 text-warning border-warning/30',
-  critical: 'bg-critical/15 text-critical border-critical/30',
+// Severity → Tailwind background for stripes and dots.
+export const SEVERITY_STRIPE = {
+  info: 'bg-info',
+  warning: 'bg-warning',
+  critical: 'bg-critical',
 };
 
-export const SEVERITY_BORDER = {
-  info: 'border-info',
-  warning: 'border-warning',
-  critical: 'border-critical',
+// Hex values for SVG/recharts, mirroring the tokens in index.css.
+export const CHART = {
+  accent: '#2f5fe0',
+  crit: '#dc3b36',
+  warn: '#c77700',
+  info: '#0e8fa8',
+  ok: '#1f9d5c',
+  grid: '#e3e8ef',
+  axis: '#6b7789',
+  panel: '#ffffff',
+  ink: '#111827',
+};
+
+export const CHART_TOOLTIP = {
+  contentStyle: {
+    background: '#ffffff', border: '1px solid #cfd7e2', borderRadius: 8,
+    boxShadow: '0 4px 14px rgba(16,24,40,.08)', fontSize: 12,
+  },
+  labelStyle: { color: '#111827', fontWeight: 500 },
+  cursor: { fill: 'rgba(47,95,224,.06)' },
 };
 
 export const STATUS_LABELS = {
@@ -47,4 +64,25 @@ export function trendDelta(today, yesterday) {
 
 export function incidentLabel(type) {
   return (type || '').replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Compact age such as "4m", "2h 5m", "3d".
+export function fmtAge(iso, now = Date.now()) {
+  if (!iso) return '—';
+  const mins = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60000));
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return mins % 60 ? `${h}h ${mins % 60}m` : `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+export function minutesSince(iso, now = Date.now()) {
+  return iso ? (now - new Date(iso).getTime()) / 60000 : 0;
+}
+
+export function initials(email) {
+  if (!email) return '?';
+  const local = email.split('@')[0];
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  return (parts.length > 1 ? parts[0][0] + parts[1][0] : local.slice(0, 2)).toUpperCase();
 }

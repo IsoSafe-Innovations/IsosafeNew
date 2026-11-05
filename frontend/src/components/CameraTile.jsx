@@ -1,11 +1,11 @@
-import { Activity, Car, Users } from 'lucide-react';
+import { Car, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket.jsx';
-import { SEVERITY_BORDER } from '../lib/format';
 
 // Live camera tile. When `live` is true it subscribes to the frame stream;
-// otherwise it renders counts only (thumbnail mode).
-export default function CameraTile({ camera, live = false, large = false, onClick }) {
+// otherwise it renders counts only (thumbnail mode). The video surface stays
+// dark on purpose; the caption sits on the light card.
+export default function CameraTile({ camera, live = false, large = false, onClick, selected = false, caption = true }) {
   const [frame, setFrame] = useState(null);
   const [counts, setCounts] = useState({});
   const [inFrame, setInFrame] = useState({});
@@ -36,70 +36,66 @@ export default function CameraTile({ camera, live = false, large = false, onClic
   useEffect(() => () => clearTimeout(alertTimer.current), []);
 
   const online = camera.health?.online;
+  const youtube = camera.type === 'youtube' && /^[A-Za-z0-9_-]{11}$/.test(camera.youtube_id || '');
   const people = inFrame.person || 0;
   const vehicles = (inFrame.car || 0) + (inFrame.truck || 0) + (inFrame.bus || 0) + (inFrame.motorcycle || 0);
-  const riskScore = alertSeverity === 'critical' ? 'HIGH' : alertSeverity === 'warning' ? 'MED' : 'LOW';
-  const activity = people > 0
-    ? `${people} ${people === 1 ? 'person' : 'people'} in frame`
-    : vehicles > 0 ? `${vehicles} vehicle${vehicles === 1 ? '' : 's'}` : 'No activity';
-
-  const borderClass = alertSeverity
-    ? `${SEVERITY_BORDER[alertSeverity]} border-2 alert-pulse`
-    : 'border-surface-700 border';
+  const risk = alertSeverity === 'critical' ? 'HIGH' : alertSeverity === 'warning' ? 'MED' : 'LOW';
+  const riskColor = risk === 'HIGH' ? 'text-[#ff7b73]' : risk === 'MED' ? 'text-[#ffbf4d]' : 'text-[#5fdc9a]';
+  const activity = youtube && !online
+    ? 'Analysis connecting…'
+    : people > 0
+      ? `${people} ${people === 1 ? 'person' : 'people'} in frame`
+      : vehicles > 0 ? `${vehicles} vehicle${vehicles === 1 ? '' : 's'}` : 'No activity';
 
   return (
-    <button
-      onClick={onClick}
-      className={`relative rounded-lg overflow-hidden bg-surface-800 text-left w-full transition-transform ${borderClass} ${
-        alertSeverity ? 'scale-[1.02] z-10' : ''
-      }`}
-    >
-      <div className={`relative ${large ? 'aspect-video' : 'aspect-[4/3]'} bg-black`}>
-        {frame ? (
-          <img
-            src={`data:image/jpeg;base64,${frame}`}
-            alt={camera.name}
-            className="w-full h-full object-cover"
-          />
+    <div className="flex flex-col gap-1.5 min-w-0 h-full">
+      <div
+        className={`feed ${large ? 'aspect-video flex-1' : 'aspect-video'} ${youtube ? 'min-h-[200px]' : ''} ${
+          alertSeverity ? `feed-alert-${alertSeverity} alert-pulse` : ''
+        } ${selected ? 'ring-2 ring-accent ring-offset-2 ring-offset-panel' : ''}`}
+      >
+        {youtube && live && camera.enabled ? (
+          <iframe title={`${camera.name} live video`}
+            src={`https://www.youtube-nocookie.com/embed/${camera.youtube_id}?autoplay=1&mute=1&playsinline=1&rel=0`}
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            referrerPolicy="strict-origin-when-cross-origin" allowFullScreen
+            className="w-full h-full border-0" />
+        ) : frame ? (
+          <img src={`data:image/jpeg;base64,${frame}`} alt={camera.name} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-slate-600 text-sm">
-            {online ? 'Streaming…' : 'Offline'}
+          <div className="feed-empty">
+            {online ? 'Streaming…' : camera.is_upload && camera.enabled ? 'Waiting for playback…' : 'Offline'}
           </div>
         )}
-        <div className="absolute top-2 left-2 flex items-center gap-2">
-          {online && (
-            <span className="flex items-center gap-1 bg-black/70 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">
-              <span className="w-1.5 h-1.5 rounded-full bg-critical animate-pulse" /> LIVE
-            </span>
-          )}
-          <span className={`bg-black/70 text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-            riskScore === 'HIGH' ? 'text-critical' : riskScore === 'MED' ? 'text-warning' : 'text-normal'
-          }`}>
-            RISK {riskScore}
+        {!youtube && (
+          <>
+            <div className="absolute top-2 left-2 right-2 flex items-center gap-1.5 pointer-events-none">
+              {camera.is_upload ? (
+                <span className="ovtag !text-[#7fd8e8]">UPLOAD · LOOP</span>
+              ) : online ? (
+                <span className="ovtag ovtag-live">LIVE</span>
+              ) : (
+                <span className="ovtag !text-[#ff7b73]">OFFLINE</span>
+              )}
+              {online && <span className={`ovtag ${riskColor}`}>RISK {risk}</span>}
+            </div>
+            <div className="absolute bottom-2 left-2 pointer-events-none">
+              <span className="ovtag">
+                <Users size={11} /> {people}
+                <Car size={11} className="ml-1" /> {vehicles}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+      {caption && (
+        <button onClick={onClick} className="flex items-baseline justify-between gap-2 px-0.5 text-left w-full">
+          <span className="text-[13px] font-medium truncate">{camera.name}{youtube ? ' · YouTube' : ''}</span>
+          <span className="text-[11.5px] text-muted whitespace-nowrap">
+            {counts.person != null && !people && !vehicles ? `${counts.person} today` : activity}
           </span>
-        </div>
-        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs bg-black/70 rounded px-2 py-1">
-            <span className="flex items-center gap-1 text-slate-200">
-              <Users size={12} /> {people}
-            </span>
-            <span className="flex items-center gap-1 text-slate-200">
-              <Car size={12} /> {vehicles}
-            </span>
-          </div>
-        </div>
-      </div>
-      <div className="p-2 flex items-center justify-between">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-white truncate">{camera.name}</p>
-          <p className="text-xs text-slate-500 flex items-center gap-1 truncate">
-            <Activity size={11} /> {activity}
-          </p>
-        </div>
-        {counts.person != null && (
-          <p className="text-xs text-slate-500 whitespace-nowrap pl-2">{counts.person} today</p>
-        )}
-      </div>
-    </button>
+        </button>
+      )}
+    </div>
   );
 }

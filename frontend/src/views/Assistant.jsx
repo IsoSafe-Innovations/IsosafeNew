@@ -1,5 +1,6 @@
-import { Bot, RefreshCw, Send } from 'lucide-react';
-import { useState } from 'react';
+import { Bot, Database, Lock, Plus, RefreshCw, Send, Sparkles } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { PageHeader, Panel } from '../components/ui.jsx';
 import { usePolling } from '../hooks/usePolling.jsx';
 import { post } from '../lib/api';
 import { fmtTime } from '../lib/format';
@@ -18,8 +19,11 @@ export default function Assistant() {
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const endRef = useRef(null);
 
   const available = insights?.available !== false;
+
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [history, busy]);
 
   const ask = async (q) => {
     const question = (q || query).trim();
@@ -48,125 +52,145 @@ export default function Assistant() {
 
   if (!available) {
     return (
-      <div className="max-w-xl mx-auto mt-20 text-center space-y-3">
-        <Bot size={40} className="mx-auto text-slate-600" />
-        <h1 className="text-lg font-semibold text-white">AI Assistant is disabled</h1>
-        <p className="text-sm text-slate-500">
-          No Anthropic API key is configured on this node. Set <code className="text-slate-400">ANTHROPIC_API_KEY</code> in
-          the environment and restart the backend to enable natural-language search and insights.
-          All other platform features run unaffected.
+      <div className="panel max-w-xl mx-auto mt-16 p-8 text-center flex flex-col gap-3 items-center">
+        <span className="w-12 h-12 rounded-xl bg-raised grid place-items-center text-muted"><Bot size={26} /></span>
+        <h1 className="page-title !text-lg">AI assistant is turned off</h1>
+        <p className="text-sm text-ink-2">
+          No Anthropic API key is configured on this node. Set <code className="font-mono text-[12.5px] bg-raised px-1 rounded">ANTHROPIC_API_KEY</code> in
+          the environment and restart the backend to turn on plain-English search and insights.
+          Everything else keeps working without it.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <div className="xl:col-span-2 space-y-4">
-        <h1 className="text-lg font-semibold text-white">AI Assistant</h1>
+    <>
+      <PageHeader title="AI assistant" subtitle="Ask about detections, incidents and analytics in plain English">
+        {history.length > 0 && (
+          <button className="btn" onClick={() => setHistory([])} disabled={busy}><Plus size={15} />New conversation</button>
+        )}
+      </PageHeader>
 
-        <div className="space-y-3 min-h-64">
-          {history.length === 0 && (
-            <div className="bg-surface-800 border border-surface-700 rounded-lg p-4">
-              <p className="text-sm text-slate-400 mb-3">
-                Ask questions about detections, incidents, and analytics in plain English.
-                Only your question text is sent to the AI — never video or data.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {EXAMPLES.map((ex) => (
-                  <button key={ex} onClick={() => ask(ex)}
-                          className="text-xs px-2.5 py-1.5 rounded-full bg-surface-900 border border-surface-600 hover:border-info text-slate-300">
-                    {ex}
-                  </button>
-                ))}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4 items-start">
+        <section className="panel flex flex-col min-h-[560px]">
+          <div className="flex-1 p-5 flex flex-col gap-[18px]">
+            {history.length === 0 && (
+              <div className="m-auto max-w-md text-center flex flex-col items-center gap-2.5 py-10">
+                <span className="w-11 h-11 rounded-xl grid place-items-center text-white bg-gradient-to-br from-accent to-[#3355c7]"><Bot size={22} /></span>
+                <p className="font-display font-semibold text-lg">What would you like to know?</p>
+                <p className="text-[13px] text-muted">
+                  Ask a question below or pick one from “Try asking”. You’ll get a table of results and the query used to build it.
+                </p>
               </div>
-            </div>
-          )}
+            )}
 
-          {history.map((msg, i) => (
-            <div key={i}>
-              {msg.role === 'user' ? (
-                <p className="text-sm bg-info/15 border border-info/30 rounded-lg px-3 py-2 inline-block">{msg.text}</p>
-              ) : msg.error ? (
-                <p className="text-sm text-critical bg-critical/10 border border-critical/30 rounded-lg px-3 py-2">{msg.error}</p>
+            {history.map((msg, i) => (
+              msg.role === 'user' ? (
+                <p key={i} className="self-end max-w-[80%] bg-accent/10 border border-accent/25 px-3 py-2 rounded-[12px_12px_3px_12px] text-sm">
+                  {msg.text}
+                </p>
               ) : (
-                <div className="bg-surface-800 border border-surface-700 rounded-lg p-3 space-y-2">
-                  <p className="text-sm text-slate-300">{msg.result.explanation}</p>
-                  <pre className="text-xs bg-surface-950 rounded-md p-2 overflow-x-auto text-info">{msg.result.sql}</pre>
-                  {msg.result.rows.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="text-xs w-full">
-                        <thead>
-                          <tr className="text-left text-slate-500 border-b border-surface-700">
-                            {msg.result.columns.map((c) => <th key={c} className="p-1.5 pr-4">{c}</th>)}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {msg.result.rows.map((row, ri) => (
-                            <tr key={ri} className="border-b border-surface-700/40">
-                              {row.map((cell, ci) => (
-                                <td key={ci} className="p-1.5 pr-4 text-slate-300">
-                                  {cell == null ? '—' : typeof cell === 'object' ? JSON.stringify(cell) : String(cell)}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                <div key={i} className="grid grid-cols-[30px_1fr] gap-3 max-w-full">
+                  <span className="w-[30px] h-[30px] rounded-lg grid place-items-center text-white bg-gradient-to-br from-accent to-[#3355c7]"><Bot size={16} /></span>
+                  {msg.error ? (
+                    <p className="alert-banner alert-error">{msg.error}</p>
                   ) : (
-                    <p className="text-xs text-slate-500">No rows returned.</p>
+                    <div className="flex flex-col gap-2.5 min-w-0">
+                      <p className="text-sm">{msg.result.explanation}</p>
+                      {msg.result.rows.length > 0 ? (
+                        <div className="table-wrap border border-line rounded-lg">
+                          <table className="table !text-[12.5px]">
+                            <thead>
+                              <tr>{msg.result.columns.map((c) => <th key={c} className="!py-2">{c}</th>)}</tr>
+                            </thead>
+                            <tbody>
+                              {msg.result.rows.map((row, ri) => (
+                                <tr key={ri}>
+                                  {row.map((cell, ci) => (
+                                    <td key={ci} className="!py-2">
+                                      {cell == null ? '—' : typeof cell === 'object' ? JSON.stringify(cell) : String(cell)}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted">No rows matched.</p>
+                      )}
+                      <details>
+                        <summary className="cursor-pointer text-xs text-muted inline-flex items-center gap-1.5 hover:text-ink">
+                          <Database size={13} />Show the query · {msg.result.row_count} rows
+                        </summary>
+                        <pre className="mt-2 font-mono text-xs bg-raised border border-line rounded-lg px-3 py-2.5 overflow-x-auto text-[#2846a8]">{msg.result.sql}</pre>
+                      </details>
+                    </div>
                   )}
-                  <p className="text-[10px] text-slate-600">{msg.result.row_count} rows</p>
                 </div>
-              )}
-            </div>
-          ))}
-          {busy && <p className="text-sm text-slate-500 animate-pulse">Thinking…</p>}
-        </div>
+              )
+            ))}
+            {busy && <p className="text-sm text-muted animate-pulse pl-[42px]">Working on it…</p>}
+            <div ref={endRef} />
+          </div>
 
-        <form onSubmit={(e) => { e.preventDefault(); ask(); }} className="flex gap-2 sticky bottom-4">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="e.g. Which zone had the most traffic this week?"
-            className="flex-1 bg-surface-800 border border-surface-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-info"
-          />
-          <button type="submit" disabled={busy || !query.trim()}
-                  className="bg-info hover:bg-info/80 disabled:opacity-40 text-white rounded-lg px-4">
-            <Send size={16} />
-          </button>
-        </form>
-      </div>
+          <form onSubmit={(e) => { e.preventDefault(); ask(); }} className="border-t border-line p-3.5 flex gap-2.5">
+            <input
+              value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder="e.g. Which zone had the most traffic this week?"
+              aria-label="Your question" className="input !h-[42px] !text-sm"
+            />
+            <button type="submit" disabled={busy || !query.trim()} className="btn btn-primary !h-[42px]">
+              <Send size={15} />Ask
+            </button>
+          </form>
+        </section>
 
-      <div>
-        <div className="flex items-center justify-between mb-2 mt-1">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">AI Insights</h2>
-          <button onClick={refreshAI} disabled={refreshing}
-                  className="text-slate-500 hover:text-white disabled:opacity-50" title="Regenerate insights">
-            <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
-          </button>
-        </div>
-        <div className="space-y-2">
-          {(insights?.insights || []).map((ins, i) => (
-            <div key={i} className="bg-surface-800 border border-surface-700 rounded-lg p-3">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-900 text-slate-500">
-                  {ins.kind}
-                </span>
-                <p className="text-sm font-medium text-white">{ins.title}</p>
-              </div>
-              <p className="text-xs text-slate-400 mt-1">{ins.detail}</p>
+        <aside className="flex flex-col gap-4">
+          <Panel title="Try asking">
+            <div className="flex flex-col gap-1.5">
+              {EXAMPLES.map((ex) => (
+                <button key={ex} onClick={() => ask(ex)} disabled={busy}
+                  className="text-left text-[13px] px-3 py-2 border border-line rounded-lg text-ink-2 hover:border-accent hover:text-ink disabled:opacity-50">
+                  {ex}
+                </button>
+              ))}
             </div>
-          ))}
-          {(insights?.insights || []).length === 0 && (
-            <p className="text-sm text-slate-500">No insights generated yet. They refresh hourly, or press refresh.</p>
-          )}
-          {insights?.generated_at && (
-            <p className="text-[10px] text-slate-600">Updated {fmtTime(insights.generated_at)}</p>
-          )}
-        </div>
+          </Panel>
+
+          <Panel
+            title="Insights"
+            action={(
+              <button onClick={refreshAI} disabled={refreshing} className="btn btn-ghost btn-sm" title="Regenerate insights">
+                <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />Refresh
+              </button>
+            )}
+          >
+            {(insights?.insights || []).length === 0 && (
+              <p className="text-sm text-muted">No insights yet. They refresh hourly, or press Refresh.</p>
+            )}
+            <div className="flex flex-col">
+              {(insights?.insights || []).map((ins, i) => (
+                <div key={i} className="grid grid-cols-[26px_1fr] gap-2.5 py-2.5 border-t border-line first:border-0 first:pt-0">
+                  <span className="w-[26px] h-[26px] rounded-md grid place-items-center bg-accent/10 text-accent"><Sparkles size={14} /></span>
+                  <div className="min-w-0">
+                    <p className="text-[13.5px] font-medium">{ins.title}</p>
+                    <p className="text-[12.5px] text-ink-2 mt-0.5">{ins.detail}</p>
+                    {ins.kind && <span className="tag mt-1.5 !text-[10.5px] uppercase tracking-wide">{ins.kind}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {insights?.generated_at && <p className="text-[11px] text-muted mt-2 font-mono">Updated {fmtTime(insights.generated_at)}</p>}
+          </Panel>
+
+          <div className="grid grid-cols-[18px_1fr] gap-2.5 text-[12.5px] text-ink-2 p-3 rounded-lg bg-normal/[0.06] border border-normal/25">
+            <Lock size={16} className="text-normal mt-0.5" />
+            <span>Only your question text is sent to the AI model. Video, images and raw detections stay on your system.</span>
+          </div>
+        </aside>
       </div>
-    </div>
+    </>
   );
 }

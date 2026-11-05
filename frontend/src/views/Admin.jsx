@@ -1,23 +1,42 @@
-import { Plus, Trash2, Upload } from 'lucide-react';
+import { Camera, Cpu, Database, Plus, Server, Trash2, Upload, Zap } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Field, PageHeader } from '../components/ui.jsx';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { usePolling } from '../hooks/usePolling.jsx';
 import { del, patch, post } from '../lib/api';
 import { DEMO_MODE } from '../lib/demo';
-import { fmtTime } from '../lib/format';
+import { fmtTime, initials } from '../lib/format';
+
+const ROLES = ['viewer', 'operator', 'admin'];
+const ROLE_HELP = {
+  viewer: 'sees dashboards and video',
+  operator: 'also manages incidents and uploads',
+  admin: 'also manages cameras and users',
+};
 
 export default function Admin() {
   const { hasRole } = useAuth();
+  const [tab, setTab] = useState('health');
+
   if (!hasRole('admin')) {
-    return <p className="text-sm text-slate-500 mt-20 text-center">Administration requires the admin role.</p>;
+    return <p className="panel text-sm text-muted mt-10 p-8 text-center">Administration needs the admin role. Ask an admin to change your role.</p>;
   }
+
+  const tabs = [['health', 'System health'], ['users', 'Users and roles'], ...(!DEMO_MODE ? [['upload', 'Footage upload']] : [])];
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-white">Administration</h1>
-      <UsersPanel />
-      {!DEMO_MODE && <UploadPanel />}
-      <HealthPanel />
-    </div>
+    <>
+      <PageHeader title="Administration" subtitle="System health, users and footage" />
+      <div className="tabs" role="tablist">
+        {tabs.map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
+        ))}
+      </div>
+      {tab === 'health' && <HealthPanel />}
+      {tab === 'users' && <UsersPanel />}
+      {tab === 'upload' && !DEMO_MODE && <UploadPanel />}
+    </>
   );
 }
 
@@ -26,14 +45,15 @@ function UsersPanel() {
   const [form, setForm] = useState({ email: '', password: '', role: 'viewer' });
   const [error, setError] = useState(null);
 
-  const create = async () => {
+  const create = async (e) => {
+    e.preventDefault();
     setError(null);
     try {
       await post('/api/users', form);
       setForm({ email: '', password: '', role: 'viewer' });
       refresh();
-    } catch (e) {
-      setError(e.message);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -49,52 +69,60 @@ function UsersPanel() {
   };
 
   return (
-    <section className="bg-surface-800 border border-surface-700 rounded-lg p-4">
-      <h2 className="text-sm font-semibold text-slate-300 mb-3">Users & Roles</h2>
-      {error && <p className="text-sm text-critical mb-2">{error}</p>}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
-               placeholder="email@company.com" type="email"
-               className="bg-surface-900 border border-surface-600 rounded-md px-2.5 py-1.5 text-sm flex-1 min-w-48" />
-        <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
-               placeholder="password (min 8 chars)" type="password"
-               className="bg-surface-900 border border-surface-600 rounded-md px-2.5 py-1.5 text-sm w-52" />
-        <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}
-                className="bg-surface-900 border border-surface-600 rounded-md px-2 py-1.5 text-sm">
-          {['viewer', 'operator', 'admin'].map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <button onClick={create} disabled={!form.email || form.password.length < 8}
-                className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-info hover:bg-info/80 disabled:opacity-40 text-white">
-          <Plus size={14} /> Add
-        </button>
-      </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs uppercase text-slate-500 border-b border-surface-700">
-            <th className="p-2">Email</th><th className="p-2">Role</th><th className="p-2">Created</th><th className="p-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {(users || []).map((u) => (
-            <tr key={u.id} className="border-b border-surface-700/40">
-              <td className="p-2 text-slate-300">{u.email}</td>
-              <td className="p-2">
-                <select value={u.role} onChange={(e) => changeRole(u.id, e.target.value)}
-                        className="bg-surface-900 border border-surface-600 rounded px-1.5 py-1 text-xs">
-                  {['viewer', 'operator', 'admin'].map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </td>
-              <td className="p-2 text-slate-500">{fmtTime(u.created_at)}</td>
-              <td className="p-2 text-right">
-                <button onClick={() => remove(u.id, u.email)} className="text-slate-500 hover:text-critical">
-                  <Trash2 size={14} />
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+    <>
+      <form className="panel" onSubmit={create}>
+        <div className="panel-h"><h2 className="section-title">Add a user</h2></div>
+        <div className="panel-b grid grid-cols-1 md:grid-cols-[2fr_1.4fr_1fr_auto] gap-2.5 items-end">
+          <Field label="Email" htmlFor="u-email">
+            <input id="u-email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="name@company.com" type="email" className="input" />
+          </Field>
+          <Field label="Temporary password" htmlFor="u-pass">
+            <input id="u-pass" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder="At least 8 characters" type="password" autoComplete="new-password" className="input" />
+          </Field>
+          <Field label="Role" htmlFor="u-role">
+            <select id="u-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="input">
+              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </Field>
+          <button type="submit" disabled={!form.email || form.password.length < 8} className="btn btn-primary">
+            <Plus size={14} /> Add user
+          </button>
+        </div>
+        <div className="px-4 pb-4 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted">
+          {ROLES.map((r) => <span key={r}><span className={`role role-${r}`}>{r}</span> {ROLE_HELP[r]}</span>)}
+        </div>
+        {error && <p role="alert" className="px-4 pb-4 text-sm text-critical">{error}</p>}
+      </form>
+
+      <section className="panel table-wrap">
+        <table className="table">
+          <thead><tr><th>User</th><th>Role</th><th>Created</th><th aria-label="Actions" /></tr></thead>
+          <tbody>
+            {(users || []).map((u) => (
+              <tr key={u.id}>
+                <td>
+                  <span className="inline-flex items-center gap-2.5"><span className="avatar avatar-sm">{initials(u.email)}</span>{u.email}</span>
+                </td>
+                <td>
+                  <select value={u.role} onChange={(e) => changeRole(u.id, e.target.value)}
+                    className="input input-sm !w-28" aria-label={`Role for ${u.email}`}>
+                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </td>
+                <td className="text-muted">{fmtTime(u.created_at)}</td>
+                <td className="text-right">
+                  <button onClick={() => remove(u.id, u.email)} className="icon-btn hover:!text-critical" aria-label={`Delete ${u.email}`}>
+                    <Trash2 size={15} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </>
   );
 }
 
@@ -121,21 +149,22 @@ function UploadPanel() {
   };
 
   return (
-    <section className="bg-surface-800 border border-surface-700 rounded-lg p-4">
-      <h2 className="text-sm font-semibold text-slate-300 mb-2">Footage Upload</h2>
-      <p className="text-xs text-slate-500 mb-3">
-        Upload recorded footage (max 500MB) for single-pass analysis. Detections and
-        incidents appear under the generated camera id.
-      </p>
-      <label className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-md bg-surface-700 hover:bg-surface-600 cursor-pointer">
-        <Upload size={15} /> {busy ? 'Uploading…' : 'Choose video file'}
-        <input type="file" accept=".mp4,.avi,.mov,.mkv,.webm" onChange={upload} className="hidden" disabled={busy} />
+    <section className="panel panel-b flex flex-col gap-4">
+      <label className="border-[1.5px] border-dashed border-line-strong rounded-[10px] p-7 flex flex-col items-center gap-2 text-center bg-raised/60 cursor-pointer hover:border-accent">
+        <span className="w-[42px] h-[42px] rounded-[10px] grid place-items-center bg-accent/10 text-accent"><Upload size={20} /></span>
+        <span className="font-medium">{busy ? 'Uploading…' : 'Choose a video file'}</span>
+        <span className="text-[12.5px] text-muted max-w-md">
+          MP4, AVI, MOV, MKV or WebM up to 500 MB. It plays on a loop as a camera so you can test rules.
+          You can also upload and name videos from the Cameras page.
+        </span>
+        <input type="file" accept=".mp4,.avi,.mov,.mkv,.webm" onChange={upload} className="sr-only" disabled={busy} />
       </label>
-      {error && <p className="text-sm text-critical mt-2">{error}</p>}
+      {error && <p role="alert" className="alert-banner alert-error">{error}</p>}
       {job && (
-        <p className="text-sm text-normal mt-2">
-          Upload accepted — processing as <code className="text-slate-300">{job.camera_id}</code> (job {job.job_id}).
-        </p>
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5 border border-line rounded-lg text-sm">
+          <span>Video added as <code className="font-mono">{job.camera_id}</code></span>
+          <Link to="/cameras" className="link">Open in Cameras</Link>
+        </div>
       )}
     </section>
   );
@@ -145,72 +174,85 @@ function HealthPanel() {
   const { data: health } = usePolling('/api/health', 15000);
   const { data: cameras } = usePolling('/api/cameras', 15000);
   const agent = health?.agent;
+  const cams = cameras || [];
+  const online = cams.filter((c) => c.health?.online).length;
 
   return (
-    <section className="bg-surface-800 border border-surface-700 rounded-lg p-4">
-      <h2 className="text-sm font-semibold text-slate-300 mb-3">System Health</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Stat label="API" ok={health?.status === 'ok'} />
-        <Stat label="Database" ok={health?.database?.ok} />
-        <Stat label="Redis" ok={health?.redis?.ok} />
-        <Stat label="Cameras online"
-              value={`${(cameras || []).filter((c) => c.health?.online).length}/${(cameras || []).length}`} />
-        {agent && <Stat label="Agent" ok={agent.online} />}
-      </div>
-      {agent && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 mb-4">
-          <span>Version <span className="text-slate-300">{agent.agent_version || '—'}</span></span>
-          <span>
-            Last seen{' '}
-            <span className="text-slate-300">
-              {agent.last_seen_ago != null ? `${agent.last_seen_ago}s ago` : 'never'}
-            </span>
-          </span>
-          {agent.cpu != null && <span>CPU <span className="text-slate-300">{agent.cpu}%</span></span>}
-          {agent.mem != null && <span>Mem <span className="text-slate-300">{agent.mem}%</span></span>}
-          {agent.disk_free_gb != null && (
-            <span>Disk free <span className="text-slate-300">{agent.disk_free_gb} GB</span></span>
-          )}
-        </div>
+    <>
+      <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+        <HealthCard label="API" icon={Server} ok={health ? health.status === 'ok' : null} />
+        <HealthCard label="Database" icon={Database} ok={health ? !!health.database?.ok : null} />
+        <HealthCard label="Redis" icon={Zap} ok={health ? !!health.redis?.ok : null} />
+        <HealthCard label="Cameras" icon={Camera} ok={cameras ? (online === cams.length ? true : 'warn') : null}
+          value={cameras ? `${online} / ${cams.length}` : '—'} note={cameras ? `${cams.length - online} not streaming` : ''} />
+        {agent && (
+          <HealthCard label="Edge agent" icon={Cpu} ok={!!agent.online}
+            value={agent.online ? 'Online' : 'Offline'}
+            note={`${agent.agent_version || '—'} · ${agent.last_seen_ago != null ? `seen ${agent.last_seen_ago}s ago` : 'never seen'}`} />
+        )}
+      </section>
+
+      {agent && (agent.cpu != null || agent.mem != null || agent.disk_free_gb != null) && (
+        <section className="panel">
+          <div className="panel-h"><h2 className="section-title">Edge agent resources</h2></div>
+          <div className="panel-b grid grid-cols-1 sm:grid-cols-3 gap-4 text-[13px]">
+            {agent.cpu != null && <Meter label="CPU" value={`${agent.cpu}%`} pct={agent.cpu} />}
+            {agent.mem != null && <Meter label="Memory" value={`${agent.mem}%`} pct={agent.mem} />}
+            {agent.disk_free_gb != null && (
+              <div><div className="flex justify-between"><span>Disk free</span><span className="font-mono">{agent.disk_free_gb} GB</span></div></div>
+            )}
+          </div>
+        </section>
       )}
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs uppercase text-slate-500 border-b border-surface-700">
-            <th className="p-2">Camera</th><th className="p-2">Status</th><th className="p-2">FPS</th>
-            <th className="p-2">Reconnects</th><th className="p-2">Dropped frames</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(cameras || []).map((c) => (
-            <tr key={c.id} className="border-b border-surface-700/40">
-              <td className="p-2 text-slate-300">{c.name}</td>
-              <td className="p-2">
-                <span className={c.health?.online ? 'text-normal' : 'text-critical'}>
-                  {c.health?.online ? 'online' : 'offline'}
-                </span>
-              </td>
-              <td className="p-2 text-slate-400">{c.health?.fps ?? 0}</td>
-              <td className="p-2 text-slate-400">{c.health?.reconnect_count ?? 0}</td>
-              <td className="p-2 text-slate-400">{c.health?.frames_dropped ?? 0}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+
+      <section className="panel table-wrap">
+        <div className="panel-h pb-2.5"><h2 className="section-title">Camera streams</h2></div>
+        <table className="table">
+          <thead>
+            <tr><th>Camera</th><th>Status</th><th>FPS</th><th>Reconnects</th><th>Dropped frames</th><th>Last error</th></tr>
+          </thead>
+          <tbody>
+            {cams.map((c) => (
+              <tr key={c.id}>
+                <td>{c.name}</td>
+                <td>
+                  <span className="inline-flex items-center gap-2">
+                    <span className={`dot ${c.health?.online ? '' : 'dot-crit'}`} />{c.health?.online ? 'Online' : 'Offline'}
+                  </span>
+                </td>
+                <td className="font-mono">{c.health?.fps ?? 0}</td>
+                <td className={`font-mono ${(c.health?.reconnect_count ?? 0) > 2 ? 'text-warning' : 'text-muted'}`}>{c.health?.reconnect_count ?? 0}</td>
+                <td className="font-mono text-muted">{c.health?.frames_dropped ?? 0}</td>
+                <td className="text-muted text-xs max-w-[320px] truncate">{c.health?.error || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </>
   );
 }
 
-function Stat({ label, ok, value }) {
+function HealthCard({ label, icon: Icon, ok, value, note }) {
+  const dot = ok === null ? 'dot-off' : ok === true ? 'dot-ring' : ok === 'warn' ? 'dot-warn' : 'dot-crit';
+  const text = value ?? (ok === null ? 'Checking…' : ok ? 'Healthy' : 'Down');
   return (
-    <div className="bg-surface-900 border border-surface-700 rounded-md p-3">
-      <p className="text-xs text-slate-500">{label}</p>
-      {value != null ? (
-        <p className="text-lg font-semibold text-white">{value}</p>
-      ) : (
-        <p className={`text-lg font-semibold ${ok ? 'text-normal' : 'text-critical'}`}>
-          {ok ? 'Healthy' : 'Down'}
-        </p>
-      )}
+    <div className="panel px-3.5 py-3 flex flex-col gap-1.5">
+      <span className="flex items-center justify-between text-[12.5px] text-ink-2">
+        <span className="flex items-center gap-2"><Icon size={15} />{label}</span>
+        <span className={`dot ${dot}`} />
+      </span>
+      <span className={`font-display font-semibold text-xl ${ok === false ? 'text-critical' : ''}`}>{text}</span>
+      {note && <span className="font-mono text-[11.5px] text-muted">{note}</span>}
+    </div>
+  );
+}
+
+function Meter({ label, value, pct }) {
+  return (
+    <div>
+      <div className="flex justify-between"><span>{label}</span><span className="font-mono">{value}</span></div>
+      <div className="meter mt-1.5"><i style={{ width: `${Math.min(100, pct)}%`, background: pct > 85 ? 'var(--crit)' : undefined }} /></div>
     </div>
   );
 }

@@ -1,25 +1,26 @@
-import { TrendingDown, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { fmtNumber } from '../lib/format';
 
-export default function KpiCard({ label, value, delta, icon: Icon, to, accent = 'text-info' }) {
+// Summary tile. `delta` is a % change vs the prior period; `invert` marks
+// metrics where a rise is bad (incidents), so the colour flips.
+export default function KpiCard({ label, value, delta, icon: Icon, to, accent = 'text-accent', note, invert = false }) {
   const navigate = useNavigate();
+  const good = delta == null ? null : invert ? delta <= 0 : delta >= 0;
+  const Tag = to ? 'button' : 'div';
   return (
-    <button
-      onClick={() => to && navigate(to)}
-      className="bg-surface-800 border border-surface-700 rounded-lg p-4 text-left hover:border-surface-600 transition-colors w-full"
-    >
-      <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+    <Tag onClick={to ? () => navigate(to) : undefined} className="kpi">
+      <span className="flex items-center justify-between text-xs text-muted">
+        {label}
         {Icon && <Icon size={16} className={accent} />}
-      </div>
-      <p className="text-2xl font-semibold text-white mt-1">{fmtNumber(value)}</p>
-      {delta != null && (
-        <p className={`text-xs mt-1 flex items-center gap-1 ${delta >= 0 ? 'text-normal' : 'text-critical'}`}>
-          {delta >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-          {Math.abs(delta)}% vs prior period
-        </p>
+      </span>
+      <span className="kpi-value">{fmtNumber(value)}</span>
+      {delta != null ? (
+        <span className={`font-mono text-[11.5px] ${good ? 'text-normal' : 'text-critical'}`}>
+          {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}% vs yesterday
+        </span>
+      ) : (
+        <span className="text-[11.5px] text-muted">{note || ' '}</span>
       )}
-    </button>
+    </Tag>
   );
 }

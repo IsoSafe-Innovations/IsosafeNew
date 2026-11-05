@@ -133,6 +133,16 @@ Email + password. Errors from the API are shown inline.
 
 ### Cameras
 
+Admins can use **Add live link → YouTube live link** to paste a public YouTube
+video URL. Tiles play using YouTube's native embedded player, initially muted,
+with sound and full-screen controls. Click the camera name to edit zones/rules.
+Analysis connects independently and displays its own health state; playback
+can work while server-side analysis is reconnecting or restricted by YouTube.
+
+Operators and admins get **Upload video**: choose a video, set its camera name,
+and watch upload progress. The camera list refreshes after success. Uploaded
+recordings loop automatically and carry an **UPLOADED VIDEO** badge.
+
 A live tile per camera with FPS, reconnects, and rule count. Admins also get:
 
 - **Add camera** — name, source type, source URL/path, optional vertical
@@ -188,7 +198,7 @@ explains how to enable it. History lives only in the browser tab.
 - **Users & Roles** — create users (min 8-char password), change roles inline,
   delete. (There's no UI to reset another user's password; use
   `PATCH /api/users/{id}` with `{"password": ...}` or `scripts/reset_admin.py`.)
-- **Footage Upload** — upload a video for single-pass analysis; shows the
+- **Footage Upload** — upload a video as a looping camera; shows the
   generated camera id. (The API allows operators to upload, but this panel is
   only on the admin page.)
 - **System Health** — API / Database / Redis status, cameras online, and a
@@ -196,18 +206,36 @@ explains how to enable it. History lives only in the browser tab.
 
 ## Styling
 
-Dark theme only. Tailwind extensions in
-[tailwind.config.js](../frontend/tailwind.config.js):
+White (light) theme. Camera video surfaces stay dark on purpose. Colours are
+CSS variables in [index.css](../frontend/src/index.css) (`--bg-rgb`, `--accent-rgb`,
+…); [tailwind.config.js](../frontend/tailwind.config.js) maps them to utilities so
+opacity modifiers such as `bg-critical/10` work.
 
-| Token | Value | Use |
+| Tailwind colour | Value | Use |
 |---|---|---|
-| `surface-950…600` | `#0a0e17` → `#2b3548` | backgrounds and borders |
-| `normal` | `#22c55e` | healthy / online |
-| `info` | `#3b82f6` | primary actions, info severity |
-| `warning` | `#f59e0b` | warning severity |
-| `critical` | `#ef4444` | critical severity, errors |
+| `page` / `panel` / `raised` | `#f4f6f9` / `#ffffff` / `#f1f4f8` | page, cards, hover and inset fills |
+| `line` / `line-strong` | `#e3e8ef` / `#cfd7e2` | borders |
+| `ink` / `ink-2` / `muted` | `#111827` / `#475467` / `#6b7789` | text, secondary text, labels |
+| `accent` | `#2f5fe0` | primary actions, selection, links |
+| `normal` | `#1f9d5c` | healthy / online |
+| `info` | `#0e8fa8` | info severity |
+| `warning` | `#c77700` | warning severity |
+| `critical` | `#dc3b36` | critical severity, errors |
 
-`alert-pulse` (in `index.css`) animates tiles with an active alert.
+Fonts: Archivo (headings, big numbers), IBM Plex Sans (body), IBM Plex Mono
+(times, IDs, figures), loaded from Google Fonts in `index.html`.
+
+Component classes in `index.css` (`.panel`, `.btn`, `.btn-primary`, `.input`,
+`.seg`, `.tabs`, `.sev-*`, `.table`, `.detail-pane`, `.feed`, …) and React helpers
+in `components/ui.jsx` (`PageHeader`, `Panel`, `Segmented`, `Field`, `Modal`) keep
+pages consistent. Chart colours for recharts live in `CHART` in `lib/format.js`.
+
+Layout: a left rail grouped into Monitor / Respond / Insight / System (it becomes
+a slide-out menu below 1024px), a top bar with page title, search, camera status,
+clock and notifications, and list pages with a detail pane on the right
+(Cameras, AI Alerts, Incidents, Reports).
+
+`alert-pulse` (in `index.css`) animates camera tiles with an active alert.
 
 ## Adding a screen
 

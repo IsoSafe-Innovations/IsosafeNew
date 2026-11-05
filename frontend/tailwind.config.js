@@ -1,20 +1,31 @@
 /** @type {import('tailwindcss').Config} */
+// Colors resolve to the CSS tokens in src/index.css so Tailwind utilities and
+// the component classes stay in one palette (white theme).
+const token = (name) => `rgb(var(--${name}-rgb) / <alpha-value>)`;
+
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       colors: {
-        surface: {
-          950: '#0a0e17',
-          900: '#0f1522',
-          800: '#161e2e',
-          700: '#1f2937',
-          600: '#2b3548',
-        },
-        normal: '#22c55e',
-        info: '#3b82f6',
-        warning: '#f59e0b',
-        critical: '#ef4444',
+        page: token('bg'),
+        panel: token('panel'),
+        raised: token('raised'),
+        line: token('line'),
+        'line-strong': token('line-strong'),
+        ink: token('ink'),
+        'ink-2': token('ink-2'),
+        muted: token('muted'),
+        accent: token('accent'),
+        normal: token('ok'),
+        info: token('info'),
+        warning: token('warn'),
+        critical: token('crit'),
+      },
+      fontFamily: {
+        display: ['Archivo', 'IBM Plex Sans', 'system-ui', 'sans-serif'],
+        sans: ['IBM Plex Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['IBM Plex Mono', 'ui-monospace', 'Cascadia Mono', 'Consolas', 'monospace'],
       },
     },
   },

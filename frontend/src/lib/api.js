@@ -92,3 +92,39 @@ export const post = (path, body) =>
 export const patch = (path, body) =>
   api(path, { method: 'PATCH', body: JSON.stringify(body) });
 export const del = (path) => api(path, { method: 'DELETE' });
+
+// XHR exposes upload progress, while keeping the same JWT refresh behavior.
+export async function uploadVideo(body, onProgress) {
+  const send = () => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/uploads');
+    if (accessToken) xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+    xhr.timeout = 30 * 60 * 1000;
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round(event.loaded * 100 / event.total));
+    };
+    xhr.onload = () => resolve(xhr);
+    xhr.onerror = () => reject(new Error('Upload connection lost. Check the camera list before trying again.'));
+    xhr.ontimeout = () => reject(new Error('Upload timed out. Check the camera list before trying again.'));
+    xhr.send(body);
+  });
+  let response = await send();
+  if (response.status === 401 && await tryRefresh()) {
+    onProgress(0);
+    response = await send();
+  }
+  if (response.status === 401) {
+    setTokens(null, null);
+    onLogout();
+    throw new Error('Session expired. Sign in and try again.');
+  }
+  let result;
+  try { result = JSON.parse(response.responseText); } catch { /* proxy error */ }
+  if (response.status < 200 || response.status >= 300) {
+    const detail = result?.detail;
+    throw new Error(typeof detail === 'string' ? detail : Array.isArray(detail)
+      ? detail[0]?.msg : response.status === 413 ? 'Video exceeds the server upload limit.' : 'The video could not be uploaded. Try again.');
+  }
+  if (!result?.camera_id) throw new Error('The server did not confirm the camera. Check the camera list before trying again.');
+  return result;
+}

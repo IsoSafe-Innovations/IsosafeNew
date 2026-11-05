@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Iso Safe Redesign Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87,500;87,600;87,700;100,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Iso Safe — control-room console.
+   Layout idea: grouped left rail (Monitor / Respond / Insight / System), a slim status top bar,
+   then each page = header row + summary strip + work area with a persistent detail pane on the right. */
+:root {
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --raised: #f1f4f8;
+  --line: #e3e8ef;
+  --line-strong: #cfd7e2;
+  --ink: #111827;
+  --ink-2: #475467;
+  --muted: #6b7789;
+  --accent: #2f5fe0;
+  --accent-ink: #ffffff;
+  --crit: #dc3b36;
+  --warn: #c77700;
+  --info: #0e8fa8;
+  --ok: #1f9d5c;
+  --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.04);
+  --font-display: "Archivo", "IBM Plex Sans", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r: 8px;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-body); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+h1, h2, h3 { font-family: var(--font-display); font-stretch: 87%; margin: 0; text-wrap: balance; letter-spacing: .005em; }
+h1 { font-size: 22px; font-weight: 700; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); }
+h3 { font-size: 15px; font-weight: 600; }
+p { margin: 0; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.ink2 { color: var(--ink-2); }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* ---------- preview ribbon ---------- */
+.ribbon { display: flex; align-items: center; gap: 12px; padding: 6px 16px; background: repeating-linear-gradient(135deg, #eef2fb 0 10px, #e8edf8 10px 20px); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.ribbon b { color: var(--ink); font-weight: 600; }
+.ribbon a { color: var(--accent); text-decoration: none; }
+.ribbon a:hover { text-decoration: underline; }
+
+/* ---------- shell ---------- */
+.shell { display: grid; grid-template-columns: 232px 1fr; min-height: calc(100% - 31px); }
+.rail { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 18px 18px 14px; }
+.brand-mark { width: 30px; height: 30px; border-radius: 7px; background: linear-gradient(145deg, var(--accent), #3355c7); display: grid; place-items: center; color: #fff; }
+.brand-name { font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: .01em; }
+.brand-sub { font-size: 11px; color: var(--muted); }
+.site { margin: 0 12px 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.nav { flex: 1; overflow-y: auto; padding: 4px 10px; display: flex; flex-direction: column; gap: 14px; }
+.nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); padding: 0 10px 4px; }
+.nav a { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; color: var(--ink-2); text-decoration: none; font-size: 13.5px; position: relative; }
+.nav a:hover { background: var(--raised); color: var(--ink); }
+.nav a.on { background: var(--raised); color: var(--ink); }
+.nav a.on::before { content: ""; position: absolute; left: -10px; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.nav .count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border-radius: 10px; background: rgba(255,95,86,.16); color: var(--crit); }
+.nav .count.n { background: var(--line); color: var(--ink-2); }
+.rail-foot { border-top: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.agent { font-size: 12px; display: grid; gap: 6px; }
+.meter { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.me { display: flex; align-items: center; gap: 10px; }
+.avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: #e3eaff; color: #2846a8; flex: none; }
+.avatar.sm { width: 24px; height: 24px; font-size: 10.5px; }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+.topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 24px; background: rgba(255,255,255,.9); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.crumb { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.crumb b { color: var(--ink); font-weight: 500; }
+.search { flex: 1; max-width: 460px; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted); font-size: 13px; }
+.search kbd { margin-left: auto; font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 5px; }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.status-pill { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 5px 10px; border-radius: 20px; border: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(52,199,123,.15); flex: none; }
+.dot.crit { background: var(--crit); box-shadow: 0 0 0 3px rgba(255,95,86,.18); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px rgba(245,165,36,.18); }
+.dot.off { background: var(--muted); box-shadow: none; }
+.iconbtn { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 7px; color: var(--ink-2); position: relative; }
+.iconbtn:hover { background: var(--raised); color: var(--ink); }
+.iconbtn .badge { position: absolute; top: 4px; right: 4px; min-width: 15px; height: 15px; border-radius: 8px; background: var(--crit); color: #fff; font-size: 9.5px; font-weight: 600; display: grid; place-items: center; padding: 0 3px; }
+.clock { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+.menu-btn { display: none; }
+
+.page { padding: 22px 24px 40px; display: flex; flex-direction: column; gap: 18px; max-width: 1640px; width: 100%; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.page-head .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ---------- primitives ---------- */
+.btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 7px; border: 1px solid var(--line-strong); background: var(--raised); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.btn { background: var(--panel); box-shadow: 0 1px 2px rgba(16,24,40,.05); }
+.btn:hover { border-color: #b8c3d1; background: var(--raised); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: #2550c4; }
+.btn.ghost, .btn.danger { box-shadow: none; }
+a.btn { text-decoration: none; color: var(--ink); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
+.btn.ghost:hover { background: var(--raised); color: var(--ink); }
+.btn.danger { background: rgba(255,95,86,.12); border-color: rgba(255,95,86,.35); color: var(--crit); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+.kpi, .cam-card, .hcard, .stab, .situation, .filterbar, .thumb { box-shadow: var(--shadow); }
+.panel-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px 0; }
+.panel-b { padding: 14px 16px 16px; }
+.link { color: var(--accent); font-size: 12.5px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.link:hover { text-decoration: underline; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.seg button { height: 26px; padding: 0 11px; border-radius: 5px; font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
+.seg button:hover { color: var(--ink); }
+.seg button.on { background: var(--raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.seg .c { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.sev { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+.sev::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.sev.critical { color: var(--crit); background: rgba(255,95,86,.12); }
+.sev.warning { color: var(--warn); background: rgba(245,165,36,.12); }
+.sev.info { color: var(--info); background: rgba(76,195,217,.12); }
+.sev.ok { color: var(--ok); background: rgba(52,199,123,.12); }
+.tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; padding: 2px 8px; border-radius: 4px; background: var(--raised); border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field label { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+.input { height: 34px; width: 100%; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 7px; padding: 0 10px; color: var(--ink); font: 13px var(--font-body); }
+textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
+.input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(90,140,255,.2); }
+select.input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 15px) 15px, calc(100% - 10px) 15px; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 28px; }
+.toggle { width: 34px; height: 20px; border-radius: 10px; background: var(--accent); position: relative; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 3px; right: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
+.toggle.off { background: var(--line-strong); }
+.toggle.off::after { right: auto; left: 3px; }
+.table-wrap { overflow-x: auto; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.t th { text-align: left; font-weight: 500; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t td { padding: 11px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t tbody tr { cursor: pointer; }
+table.t tbody tr:hover td { background: var(--raised); }
+table.t tr.sel td { background: rgba(47,95,224,.07); }
+table.t td.stripe { padding: 0; width: 3px; }
+table.t td.stripe i { display: block; width: 3px; height: 38px; }
+.empty-note { color: var(--muted); font-size: 12.5px; }
+
+/* ---------- camera feed ---------- */
+.feed { position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; }
+.feed canvas { width: 100%; height: 100%; display: block; }
+.feed .ov { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 8px; }
+.feed .row { display: flex; justify-content: space-between; gap: 6px; align-items: flex-start; }
+.ovtag { font-family: var(--font-mono); font-size: 10.5px; padding: 2px 6px; border-radius: 3px; background: rgba(5,8,12,.72); color: #dfe6ee; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ovtag.live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--crit); animation: blink 1.4s infinite; }
+.ovtag.risk-high { color: var(--crit); }
+.ovtag.risk-med { color: var(--warn); }
+.ovtag.risk-low { color: var(--ok); }
+.feed.alerting { box-shadow: 0 0 0 2px var(--crit), 0 0 24px rgba(255,95,86,.25); }
+.feed.alerting::after { content: ""; position: absolute; inset: 0; border: 2px solid var(--crit); border-radius: 8px; animation: pulse 1.6s ease-in-out infinite; pointer-events: none; }
+.feed .scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px); pointer-events: none; }
+@keyframes blink { 50% { opacity: .25; } }
+@keyframes pulse { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .ovtag.live::before, .feed.alerting::after { animation: none; } }
+
+/* ---------- dashboard ---------- */
+.situation { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.situation > div { padding: 14px 18px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+.situation > div:first-child { border-left: 0; }
+.situation .alertcell { background: linear-gradient(90deg, rgba(255,95,86,.14), rgba(255,95,86,.03)); flex-direction: row; align-items: center; gap: 14px; justify-content: space-between; }
+.situation .big { font-family: var(--font-display); font-size: 20px; font-weight: 600; font-stretch: 87%; }
+.situation .lbl { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px 10px; display: flex; flex-direction: column; gap: 2px; text-align: left; text-decoration: none; color: inherit; }
+.kpi:hover { border-color: var(--line-strong); }
+.kpi .lbl { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+.kpi .val { font-family: var(--font-display); font-size: 27px; font-weight: 600; font-stretch: 87%; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.kpi .d { font-size: 11.5px; font-family: var(--font-mono); }
+.kpi .d.up { color: var(--ok); } .kpi .d.down { color: var(--crit); } .kpi .d.flat { color: var(--muted); }
+.kpi svg.spark { width: 100%; height: 30px; margin-top: 4px; }
+.dash-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.wall { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.wall .tile:first-child { grid-column: span 2; grid-row: span 2; }
+.tile { display: flex; flex-direction: column; gap: 6px; text-align: left; min-width: 0; }
+.tile .cap { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 2px; font-size: 12.5px; }
+.tile .cap b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .cap span { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.wall .tile:first-child .feed { aspect-ratio: auto; flex: 1; min-height: 0; }
+.alert-feed { display: flex; flex-direction: column; }
+.alert-item { display: grid; grid-template-columns: 3px 1fr auto; gap: 12px; padding: 11px 16px; border-top: 1px solid var(--line); text-align: left; align-items: start; }
+.alert-item:hover { background: var(--raised); }
+.alert-item .bar { align-self: stretch; border-radius: 2px; }
+.alert-item .t { font-weight: 500; font-size: 13.5px; }
+.alert-item .m { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.alert-item time { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.insight { display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 11px 0; border-top: 1px solid var(--line); }
+.insight:first-child { border-top: 0; padding-top: 0; }
+.insight .ic { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; background: rgba(90,140,255,.14); color: var(--accent); }
+.insight b { font-weight: 500; font-size: 13.5px; display: block; }
+.insight p { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+.hbars { display: flex; flex-direction: column; gap: 10px; }
+.hbar { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 12.5px; }
+.hbar .track { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.hbar .track i { display: block; height: 100%; border-radius: 3px; }
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { fill: var(--muted); font: 10.5px var(--font-mono); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+
+/* ---------- split layouts ---------- */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
+.detail { position: sticky; top: 72px; display: flex; flex-direction: column; max-height: calc(100vh - 90px); overflow: hidden; }
+.detail .scroll { overflow-y: auto; }
+.detail-h { padding: 16px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+.kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.kv dt { font-size: 11.5px; color: var(--muted); }
+.kv dd { margin: 2px 0 0; font-size: 13px; }
+.section { padding: 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.section:last-child { border-bottom: 0; }
+
+/* cameras */
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.toolbar .input { width: 240px; }
+.cam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.cam-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.cam-card:hover { border-color: var(--line-strong); }
+.cam-card.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cam-card .feed { border-radius: 6px; }
+.cam-meta { display: flex; justify-content: space-between; gap: 8px; padding: 0 4px 2px; font-size: 12px; }
+.cam-meta b { font-size: 13.5px; font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cam-health { display: flex; gap: 10px; padding: 7px 4px 0; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--muted); font-family: var(--font-mono); }
+.cam-health .ok { color: var(--ok); } .cam-health .bad { color: var(--crit); }
+.zone-wrap { position: relative; }
+.zone-wrap svg.zones { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.rule { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.rule .rn { font-weight: 500; font-size: 13px; }
+.rule .rd { font-size: 12px; color: var(--muted); grid-column: 1 / -1; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding: 0 16px; }
+.tabs button { padding: 10px 10px; font-size: 13px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button.on { color: var(--ink); border-color: var(--accent); }
+.tabs button:hover { color: var(--ink); }
+
+/* alerts */
+.inbox { display: flex; flex-direction: column; }
+.inbox-group { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 14px 16px 6px; }
+.inbox-item { display: grid; grid-template-columns: 3px 128px 1fr auto; gap: 14px; align-items: center; padding: 10px 16px 10px 0; border-top: 1px solid var(--line); text-align: left; width: 100%; }
+.inbox-item:hover { background: var(--raised); }
+.inbox-item.sel { background: rgba(90,140,255,.08); }
+.inbox-item .bar { align-self: stretch; }
+.inbox-item .feed { aspect-ratio: 16/9; border-radius: 5px; }
+.inbox-item .t { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.inbox-item .t b { font-weight: 500; }
+.inbox-item .d { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+.inbox-item .r { text-align: right; font-size: 12px; color: var(--muted); }
+.unread { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block; }
+
+/* incidents */
+.status-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stab { text-align: left; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; gap: 2px; }
+.stab:hover { border-color: var(--line-strong); }
+.stab.on { border-color: var(--accent); background: linear-gradient(180deg, rgba(90,140,255,.10), transparent); }
+.stab .n { font-family: var(--font-display); font-size: 24px; font-weight: 600; font-stretch: 87%; }
+.stab .l { font-size: 12.5px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+.age { font-family: var(--font-mono); font-size: 12px; }
+.age.late { color: var(--warn); }
+.timeline { display: flex; flex-direction: column; gap: 0; }
+.tl { display: grid; grid-template-columns: 14px 1fr; gap: 10px; position: relative; padding-bottom: 14px; }
+.tl::before { content: ""; position: absolute; left: 6px; top: 14px; bottom: 0; width: 1px; background: var(--line-strong); }
+.tl:last-child::before { display: none; }
+.tl .pt { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--panel); margin-top: 3px; }
+.tl .pt.a { border-color: var(--accent); }
+.tl .pt.c { border-color: var(--crit); }
+.tl b { font-weight: 500; font-size: 13px; }
+.tl p { font-size: 12px; color: var(--muted); }
+
+/* analytics */
+.filterbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.filterbar .input { width: 200px; }
+.summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.summary .kpi .val { font-size: 24px; }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.heat { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; align-items: center; }
+.scale { height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(76,195,217,.25), #f5a524, #ff5f56); }
+
+/* reports */
+.reports { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
+.rep-list { display: flex; flex-direction: column; }
+.rep { display: grid; grid-template-columns: 40px 1fr auto; gap: 14px; align-items: center; padding: 14px 16px; border-top: 1px solid var(--line); text-align: left; width: 100%; }
+.rep:first-child { border-top: 0; }
+.rep:hover { background: var(--raised); }
+.rep.sel { background: rgba(90,140,255,.08); }
+.rep .ic { width: 40px; height: 40px; border-radius: 8px; background: var(--raised); border: 1px solid var(--line); display: grid; place-items: center; color: var(--accent); }
+.rep b { font-weight: 500; }
+.rep p { font-size: 12.5px; color: var(--muted); }
+.paper { background: #fbfaf7; color: #1b1f24; border: 1px solid var(--line); border-radius: 6px; padding: 18px; font-size: 10px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 6px 20px rgba(16,24,40,.10); }
+.paper h4 { margin: 0; font: 600 14px var(--font-display); }
+.paper .pk { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.paper .pk div { border: 1px solid #d8d4cb; border-radius: 3px; padding: 6px; }
+.paper .pk b { display: block; font: 600 14px var(--font-display); }
+.paper .rows div { display: flex; justify-content: space-between; border-bottom: 1px solid #e2ded6; padding: 3px 0; }
+
+/* investigations */
+.query { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 10px; align-items: end; padding: 14px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 14px 14px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 6px 3px 9px; border-radius: 14px; background: rgba(47,95,224,.08); color: var(--accent); border: 1px solid rgba(47,95,224,.25); }
+.chip svg.i { width: 12px; height: 12px; }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.thumb { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+.thumb .feed { border-radius: 5px; }
+.thumb .m { font-size: 11.5px; color: var(--muted); padding: 0 3px 3px; display: flex; justify-content: space-between; gap: 6px; }
+.plate { font-family: var(--font-mono); font-weight: 500; color: #111; background: #f1d36b; padding: 1px 6px; border-radius: 3px; font-size: 12px; letter-spacing: .04em; }
+.conf { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; }
+.conf i { width: 44px; height: 4px; border-radius: 2px; background: var(--line); position: relative; overflow: hidden; }
+.conf i::after { content: ""; position: absolute; inset: 0; width: var(--w); background: var(--ok); }
+
+/* assistant */
+.chat-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.chat { display: flex; flex-direction: column; min-height: 640px; }
+.msgs { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
+.msg-u { align-self: flex-end; max-width: 70%; background: rgba(90,140,255,.14); border: 1px solid rgba(90,140,255,.3); padding: 9px 13px; border-radius: 12px 12px 3px 12px; }
+.msg-a { display: grid; grid-template-columns: 30px 1fr; gap: 12px; max-width: 92%; }
+.msg-a .av { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(145deg, var(--accent), #3355c7); display: grid; place-items: center; color: #fff; }
+.msg-a .body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sql { font-family: var(--font-mono); font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; color: #2846a8; overflow-x: auto; white-space: pre; }
+details.sqlbox summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; display: inline-flex; gap: 6px; align-items: center; }
+details.sqlbox summary::-webkit-details-marker { display: none; }
+details.sqlbox[open] summary { margin-bottom: 8px; }
+.composer { border-top: 1px solid var(--line); padding: 14px; display: flex; gap: 10px; }
+.composer .input { height: 42px; font-size: 14px; }
+.suggest { display: flex; flex-direction: column; gap: 6px; }
+.suggest button { text-align: left; font-size: 13px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-2); background: var(--bg); }
+.suggest button:hover { border-color: var(--accent); color: var(--ink); }
+.privacy { display: grid; grid-template-columns: 18px 1fr; gap: 10px; font-size: 12.5px; color: var(--ink-2); padding: 12px; border-radius: 8px; background: rgba(52,199,123,.07); border: 1px solid rgba(52,199,123,.22); }
+.privacy svg { color: var(--ok); }
+
+/* admin */
+.health-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.hcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px; display: flex; flex-direction: column; gap: 6px; }
+.hcard .top { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--ink-2); }
+.hcard .v { font-family: var(--font-display); font-size: 20px; font-weight: 600; font-stretch: 87%; }
+.hcard .s { font-size: 11.5px; color: var(--muted); font-family: var(--font-mono); }
+.res { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.res .meter { height: 6px; margin-top: 6px; }
+.role { font-size: 11.5px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+.role.admin { background: rgba(47,95,224,.1); color: var(--accent); }
+.role.operator { background: rgba(76,195,217,.13); color: var(--info); }
+.role.viewer { background: var(--raised); color: var(--ink-2); border: 1px solid var(--line); }
+.drop { border: 1.5px dashed var(--line-strong); border-radius: 10px; padding: 28px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--ink-2); background: var(--raised); }
+.drop .ic { width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; background: rgba(90,140,255,.12); color: var(--accent); }
+.progress { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.progress i { display: block; height: 100%; width: 64%; background: var(--accent); }
+
+/* login */
+.login { min-height: calc(100vh - 31px); display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(380px, .85fr); }
+.login-art { position: relative; overflow: hidden; border-right: 1px solid var(--line); background: #06080b; color: #f2f5f9; }
+.login-art .brand-name { color: #fff; }
+.login-art .mosaic { position: absolute; inset: -20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; opacity: .55; transform: rotate(-4deg) scale(1.08); }
+.login-art .mosaic .feed { border-radius: 4px; }
+.login-art .veil { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6,8,11,.92) 0%, rgba(6,8,11,.55) 60%, rgba(6,8,11,.85) 100%), linear-gradient(0deg, rgba(6,8,11,.95), transparent 45%); }
+.login-art .copy { position: absolute; left: 48px; bottom: 48px; right: 48px; max-width: 520px; display: flex; flex-direction: column; gap: 14px; }
+.login-art .copy h1 { font-size: 40px; line-height: 1.08; font-weight: 700; }
+.login-art .copy p { color: #c3ccd8; font-size: 15px; max-width: 46ch; }
+.login-art .facts { display: flex; gap: 22px; margin-top: 8px; flex-wrap: wrap; }
+.login-art .facts div { font-size: 12px; color: #8f9bab; }
+.login-art .facts b { display: block; font-family: var(--font-display); font-size: 20px; color: #fff; font-weight: 600; }
+.login-form { display: flex; align-items: center; justify-content: center; padding: 40px 24px; background: var(--panel); }
+.login-form form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 16px; }
+.login-form .input { height: 42px; font-size: 14px; }
+.login-form .btn.primary { height: 42px; justify-content: center; font-size: 14px; }
+
+/* ---------- design notes ---------- */
+.notes { position: fixed; right: 18px; bottom: 18px; z-index: 50; width: 330px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 12px 32px rgba(16,24,40,.14); font-size: 12.5px; }
+.notes-h { display: flex; justify-content: space-between; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.notes-h b { font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.notes ul { margin: 0; padding: 12px 14px 14px 30px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); }
+.notes.min { width: auto; }
+.notes.min ul { display: none; }
+.notes.min .notes-h { border-bottom: 0; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1280px) {
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .health-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .query { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .dash-grid, .split, .reports, .chat-wrap { grid-template-columns: minmax(0, 1fr); }
+  .detail { position: static; max-height: none; }
+  .situation { grid-template-columns: 1fr 1fr; }
+  .situation > div:nth-child(3) { border-left: 0; }
+  .situation > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .charts, .heat { grid-template-columns: minmax(0, 1fr); }
+  .notes { display: none; }
+}
+@media (max-width: 860px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .rail { position: fixed; left: 0; top: 0; z-index: 60; width: 260px; transform: translateX(-100%); transition: transform .2s; box-shadow: 20px 0 50px rgba(16,24,40,.18); }
+  .rail.open { transform: none; }
+  .menu-btn { display: grid; }
+  .topbar { padding: 0 16px; gap: 10px; }
+  .search, .status-pill, .crumb { display: none; }
+  .page { padding: 18px 16px 32px; }
+  .login { grid-template-columns: minmax(0, 1fr); }
+  .login-art { min-height: 320px; }
+  .login-art .copy { left: 20px; right: 20px; bottom: 24px; }
+  .login-art .copy h1 { font-size: 28px; }
+  .status-tabs, .summary, .res { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .kpis, .health-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .situation, .query { grid-template-columns: minmax(0, 1fr); }
+  .situation > div { border-left: 0; border-top: 1px solid var(--line); }
+  .situation > div:first-child { border-top: 0; }
+  .wall { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inbox-item { grid-template-columns: 3px 84px 1fr; }
+  .inbox-item .r { display: none; }
+  .toolbar .input, .filterbar .input { width: 100%; }
+  .clock { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="ribbon" role="note">
+  <b>Iso Safe redesign preview</b>
+  <span>Every page is clickable. Cameras, alerts and numbers are illustrative sample data.</span>
+  <a href="#login">View sign-in screen</a>
+</div>
+<div id="app"></div>
+
+<script>
+/* ======================= icons ======================= */
+const P = {
+  grid: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  camera: '<path d="m16 13 5.2 3.1a.5.5 0 0 0 .8-.4V8.3a.5.5 0 0 0-.8-.4L16 11"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+  alert: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="M12 8v4M12 16h.01"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>',
+  chart: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+  sheet: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 12h8M8 16h8M12 12v8"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  bot: '<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4H8M2 14h2M20 14h2M9 13v2M15 13v2"/>',
+  cog: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  radar: '<circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19A10 10 0 0 1 5 5"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  car: '<path d="M5 17H3v-5l2-5h14l2 5v5h-2"/><path d="M3 12h18"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/>',
+  gauge: '<path d="m12 14 4-4"/><path d="M3.3 19a10 10 0 1 1 17.4 0"/>',
+  tri: '<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3"/><path d="M12 9v4M12 17h.01"/>',
+  out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+  spark: '<path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  arrow: '<path d="M7 17 17 7M7 7h10v10"/>',
+  right: '<path d="m9 18 6-6-6-6"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  db: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  cpu: '<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>',
+  server: '<rect x="3" y="3" width="18" height="8" rx="2"/><rect x="3" y="13" width="18" height="8" rx="2"/><path d="M7 7h.01M7 17h.01"/>',
+  filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  zap: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
+  layers: '<path d="m12 2 10 6-10 6L2 8z"/><path d="m2 16 10 6 10-6"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12"/><circle cx="12" cy="12" r="3"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15"/>',
+  play: '<path d="m6 4 14 8-14 8z"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
+};
+const ic = (n, extra = '') => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true" ${extra}>${P[n] || ''}</svg>`;
+
+/* ======================= sample data ======================= */
+const CAMS = [
+  { id: 'cam-dock-b', name: 'Loading Dock B', scene: 'dock', people: 3, vehicles: 1, risk: 'high', alert: true, fps: 14.8, rc: 0, rules: 4, today: 412, online: true, zone: 'Dock apron' },
+  { id: 'cam-entrance', name: 'Main Entrance', scene: 'entrance', people: 5, vehicles: 0, risk: 'low', fps: 15.0, rc: 1, rules: 3, today: 1286, online: true },
+  { id: 'cam-gate-2', name: 'Gate 2 · Vehicles', scene: 'gate', people: 0, vehicles: 2, risk: 'med', fps: 12.1, rc: 3, rules: 3, today: 64, online: true },
+  { id: 'cam-lot-n', name: 'Parking Lot North', scene: 'parking', people: 1, vehicles: 4, risk: 'low', fps: 14.6, rc: 0, rules: 2, today: 233, online: true },
+  { id: 'cam-aisle-4', name: 'Warehouse Aisle 4', scene: 'aisle', people: 2, vehicles: 0, risk: 'low', fps: 15.0, rc: 0, rules: 2, today: 318, online: true },
+  { id: 'cam-lobby', name: 'Lobby', scene: 'lobby', people: 4, vehicles: 0, risk: 'low', fps: 15.0, rc: 0, rules: 2, today: 904, online: true },
+  { id: 'cam-perim-e', name: 'Perimeter East', scene: 'perimeter', people: 0, vehicles: 0, risk: 'med', fps: 9.8, rc: 6, rules: 3, today: 7, online: true, ir: true },
+  { id: 'cam-stair-c', name: 'Stairwell C', scene: 'stair', people: 1, vehicles: 0, risk: 'low', fps: 15.0, rc: 0, rules: 1, today: 141, online: true },
+  { id: 'cam-cafe', name: 'Cafeteria', scene: 'lobby', people: 6, vehicles: 0, risk: 'low', fps: 14.9, rc: 0, rules: 2, today: 655, online: true },
+  { id: 'cam-server', name: 'Server Room', scene: 'aisle', people: 0, vehicles: 0, risk: 'low', fps: 15.0, rc: 0, rules: 2, today: 4, online: true },
+  { id: 'cam-yard-w', name: 'Yard West', scene: 'parking', people: 0, vehicles: 0, risk: 'low', fps: 0, rc: 14, rules: 2, today: 0, online: false, err: 'RTSP timeout after 3 retries' },
+  { id: 'up-nightshift', name: 'night-shift-oct28.mp4', scene: 'dock', people: 2, vehicles: 1, risk: 'low', fps: 15.0, rc: 0, rules: 3, today: 52, online: true, upload: true, ir: true },
+];
+CAMS.forEach((c, i) => c.seed = 101 + i * 37);
+const camById = Object.fromEntries(CAMS.map(c => [c.id, c]));
+
+const ALERTS = [
+  { id: 2318, type: 'Zone intrusion', sev: 'critical', cam: 'cam-dock-b', t: '14:31', ago: '1 min ago', d: 'Person entered Restricted: Cage while dock door open', zone: 'Restricted: Cage', conf: 0.94, track: 811, rule: 'zone_intrusion', unread: true, group: 'Now' },
+  { id: 2317, type: 'Loitering', sev: 'warning', cam: 'cam-perim-e', t: '14:26', ago: '6 min ago', d: 'Person stationary near fence line for 48 s (threshold 30 s)', zone: 'Fence line', conf: 0.81, track: 799, rule: 'loitering', unread: true, group: 'Now' },
+  { id: 2316, type: 'Stopped vehicle', sev: 'warning', cam: 'cam-gate-2', t: '14:19', ago: '13 min ago', d: 'Truck stopped in exit lane for 22 s', zone: 'Exit lane', conf: 0.97, track: 790, rule: 'stopped_vehicle', unread: true, group: 'Now' },
+  { id: 2315, type: 'Abandoned object', sev: 'critical', cam: 'cam-lobby', t: '13:58', ago: '34 min ago', d: 'Suitcase unattended for 74 s beside reception desk', zone: 'Reception', conf: 0.88, track: 776, rule: 'abandoned_object', group: 'Earlier today' },
+  { id: 2314, type: 'Queue threshold', sev: 'info', cam: 'cam-cafe', t: '12:41', ago: '1 h ago', d: 'Queue length reached 7 (threshold 5)', zone: 'Till line', conf: 0.9, track: 0, rule: 'queue_threshold', group: 'Earlier today' },
+  { id: 2313, type: 'Crowd density', sev: 'warning', cam: 'cam-entrance', t: '12:05', ago: '2 h ago', d: '17 people in Turnstile zone (threshold 15)', zone: 'Turnstiles', conf: 0.86, track: 0, rule: 'crowd_density', group: 'Earlier today' },
+  { id: 2312, type: 'Line crossing', sev: 'critical', cam: 'cam-yard-w', t: '09:47', ago: '5 h ago', d: 'Person crossed perimeter line heading inbound', zone: 'Perimeter line', conf: 0.79, track: 702, rule: 'line_crossing', group: 'Earlier today' },
+  { id: 2311, type: 'After-hours activity', sev: 'critical', cam: 'cam-aisle-4', t: '05:12', ago: '9 h ago', d: 'Person detected in Aisle 4 during closed hours (22:00–06:00)', zone: 'Whole frame', conf: 0.92, track: 655, rule: 'after_hours_activity', group: 'Earlier today' },
+];
+
+const INCIDENTS = [
+  { id: 1042, type: 'Zone intrusion', sev: 'critical', cam: 'cam-dock-b', ts: 'Nov 5, 14:31', age: '1m', status: 'open', who: '', d: 'Person entered Restricted: Cage while dock door open' },
+  { id: 1041, type: 'Abandoned object', sev: 'critical', cam: 'cam-lobby', ts: 'Nov 5, 13:58', age: '34m', status: 'investigating', who: 'M. Okafor', d: 'Suitcase unattended beside reception desk', late: true },
+  { id: 1040, type: 'Loitering', sev: 'warning', cam: 'cam-perim-e', ts: 'Nov 5, 14:26', age: '6m', status: 'open', who: '', d: 'Person stationary near fence line for 48 s' },
+  { id: 1039, type: 'Stopped vehicle', sev: 'warning', cam: 'cam-gate-2', ts: 'Nov 5, 14:19', age: '13m', status: 'open', who: 'J. Reyes', d: 'Truck stopped in exit lane' },
+  { id: 1038, type: 'Line crossing', sev: 'critical', cam: 'cam-yard-w', ts: 'Nov 5, 09:47', age: '4h 45m', status: 'investigating', who: 'S. Lindqvist', d: 'Inbound perimeter crossing', late: true },
+  { id: 1037, type: 'After-hours activity', sev: 'critical', cam: 'cam-aisle-4', ts: 'Nov 5, 05:12', age: '9h', status: 'resolved', who: 'J. Reyes', d: 'Cleaning contractor, badge verified' },
+  { id: 1036, type: 'Crowd density', sev: 'warning', cam: 'cam-entrance', ts: 'Nov 5, 12:05', age: '2h', status: 'resolved', who: 'M. Okafor', d: 'Shift change, cleared in 4 min' },
+  { id: 1035, type: 'Queue threshold', sev: 'info', cam: 'cam-cafe', ts: 'Nov 4, 12:44', age: '1d', status: 'closed', who: 'A. Mensah', d: 'Lunch peak' },
+  { id: 1034, type: 'Loitering', sev: 'warning', cam: 'cam-lot-n', ts: 'Nov 4, 21:10', age: '1d', status: 'closed', who: 'S. Lindqvist', d: 'Driver waiting for pickup' },
+];
+
+const FOOTFALL = [12, 6, 4, 3, 5, 14, 61, 182, 264, 211, 168, 174, 239, 251, 196, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const YESTERDAY = [10, 7, 4, 4, 6, 16, 58, 170, 248, 205, 172, 166, 228, 240, 201, 188, 205, 262, 214, 120, 74, 42, 25, 16];
+const HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'));
+
+const S = { cam: 'cam-dock-b', camTab: 'zones', camFilter: 'all', alert: 2318, alertFilter: 'all', incTab: 'open', inc: 1042, range: '7d', report: 'daily_summary', adminTab: 'health', notesOpen: true, chat: [], navOpen: false };
+
+/* ======================= helpers ======================= */
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const sevColor = s => ({ critical: 'var(--crit)', warning: 'var(--warn)', info: 'var(--info)' }[s] || 'var(--ok)');
+const fmt = n => new Intl.NumberFormat('en-US').format(n);
+function nice(max, ticks = 4) { const raw = max / ticks || 1; const p = 10 ** Math.floor(Math.log10(raw)); const step = [1, 2, 2.5, 5, 10].find(m => m * p >= raw) * p; return { step, top: step * ticks }; }
+
+function feed(cam, opts = {}) {
+  const c = typeof cam === 'string' ? camById[cam] : cam;
+  const risk = c.risk === 'high' ? 'HIGH' : c.risk === 'med' ? 'MED' : 'LOW';
+  const alerting = opts.alert ?? c.alert;
+  const top = opts.bare ? '' : `<div class="row">
+      <span style="display:flex;gap:5px;flex-wrap:wrap">${c.upload ? '<span class="ovtag" style="color:var(--info)">UPLOAD · LOOP</span>' : c.online ? '<span class="ovtag live">LIVE</span>' : '<span class="ovtag" style="color:var(--crit)">OFFLINE</span>'}${c.online ? `<span class="ovtag risk-${c.risk}">RISK ${risk}</span>` : ''}</span>
+      ${opts.big ? `<span class="ovtag" data-clock>14:32:07</span>` : ''}
+    </div>`;
+  const bottom = opts.bare ? '' : `<div class="row" style="align-items:flex-end">
+      <span class="ovtag">${ic('users', 'style="width:11px;height:11px"')} ${c.people} &nbsp;${ic('car', 'style="width:11px;height:11px"')} ${c.vehicles}</span>
+      ${opts.big ? `<span class="ovtag">${c.name.toUpperCase()}</span>` : ''}
+    </div>`;
+  return `<div class="feed ${alerting ? 'alerting' : ''}" ${opts.style ? `style="${opts.style}"` : ''}>
+    <canvas data-feed="${c.id}" ${opts.alert ? 'data-alert="1"' : ''} ${opts.heat ? 'data-heat="1"' : ''} ${opts.seed ? `data-seed="${opts.seed}"` : ''} aria-label="${c.name} camera view" role="img"></canvas>
+    <div class="scan"></div>
+    <div class="ov">${top}${bottom}</div>
+  </div>`;
+}
+
+function drawFeed(cv, t) {
+  const c = camById[cv.dataset.feed]; if (!c) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = cv.clientWidth, H = cv.clientHeight; if (!W || !H) return;
+  if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const r = rng(Number(cv.dataset.seed) || c.seed);
+  const outdoor = ['gate', 'parking', 'perimeter'].includes(c.scene);
+  const ir = c.ir;
+  if (!c.online) {
+    x.fillStyle = '#07090c'; x.fillRect(0, 0, W, H);
+    for (let i = 0; i < W * H / 40; i++) { const v = 20 + r() * 40 | 0; x.fillStyle = `rgb(${v},${v},${v})`; x.fillRect(r() * W, r() * H, 1.4, 1.4); }
+    x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(0, H / 2 - 14, W, 28);
+    x.fillStyle = '#ff8a84'; x.font = `500 ${Math.max(10, W / 30)}px "IBM Plex Mono", monospace`; x.textAlign = 'center'; x.fillText('NO SIGNAL', W / 2, H / 2 + 4); x.textAlign = 'left';
+    return;
+  }
+  const hz = H * (outdoor ? 0.34 : 0.4);
+  const pal = ir ? ['#1d2421', '#3c4642', '#2b3330'] : outdoor ? ['#3a4650', '#2e3337', '#40494f'] : c.scene === 'lobby' ? ['#3d3a36', '#5b5650', '#4a4640'] : ['#30353a', '#4a4e50', '#3b4044'];
+  let g = x.createLinearGradient(0, 0, 0, hz); g.addColorStop(0, pal[0]); g.addColorStop(1, pal[2]); x.fillStyle = g; x.fillRect(0, 0, W, hz);
+  g = x.createLinearGradient(0, hz, 0, H); g.addColorStop(0, pal[2]); g.addColorStop(1, pal[1]); x.fillStyle = g; x.fillRect(0, hz, W, H - hz);
+  const vx = W * (0.35 + r() * 0.3);
+  x.strokeStyle = 'rgba(255,255,255,.07)'; x.lineWidth = 1;
+  for (let i = -6; i <= 6; i++) { x.beginPath(); x.moveTo(vx, hz); x.lineTo(vx + i * W * 0.22, H); x.stroke(); }
+  for (let k = 1; k < 6; k++) { const yy = hz + (H - hz) * (k / 6) ** 1.6; x.beginPath(); x.moveTo(0, yy); x.lineTo(W, yy); x.stroke(); }
+  // structures
+  if (outdoor) {
+    for (let i = 0; i < 5; i++) { const bw = W * (0.1 + r() * 0.18), bx = r() * W, bh = hz * (0.3 + r() * 0.5); x.fillStyle = `rgba(20,24,28,${0.5 + r() * 0.3})`; x.fillRect(bx, hz - bh, bw, bh); }
+    x.strokeStyle = 'rgba(240,220,150,.35)'; x.setLineDash([10, 10]); x.lineWidth = 2;
+    x.beginPath(); x.moveTo(vx, hz); x.lineTo(vx - W * 0.1, H); x.stroke(); x.setLineDash([]);
+    if (c.scene === 'perimeter') { x.strokeStyle = 'rgba(200,210,205,.18)'; x.lineWidth = 1; for (let i = 0; i < W; i += 7) { x.beginPath(); x.moveTo(i, hz - 26); x.lineTo(i + 10, hz + 6); x.stroke(); } }
+  } else {
+    const shelf = c.scene === 'aisle' || c.scene === 'dock';
+    for (const side of [0, 1]) {
+      x.fillStyle = shelf ? 'rgba(24,28,32,.75)' : 'rgba(255,255,255,.04)';
+      x.beginPath();
+      if (side === 0) { x.moveTo(0, hz * 0.2); x.lineTo(W * 0.24, hz * 0.7); x.lineTo(W * 0.24, hz + 4); x.lineTo(0, H * 0.82); }
+      else { x.moveTo(W, hz * 0.2); x.lineTo(W * 0.78, hz * 0.7); x.lineTo(W * 0.78, hz + 4); x.lineTo(W, H * 0.82); }
+      x.closePath(); x.fill();
+      if (shelf) { x.strokeStyle = 'rgba(245,165,36,.22)'; x.lineWidth = 2; for (let k = 1; k < 4; k++) { x.beginPath(); const yy = k / 4; x.moveTo(side ? W : 0, hz * 0.2 + (H * 0.82 - hz * 0.2) * yy); x.lineTo(side ? W * 0.78 : W * 0.24, hz * 0.7 + (hz + 4 - hz * 0.7) * yy); x.stroke(); } }
+    }
+    if (c.scene === 'dock') { x.fillStyle = 'rgba(10,12,14,.8)'; x.fillRect(W * 0.38, hz * 0.35, W * 0.24, hz * 0.65); x.fillStyle = 'rgba(245,165,36,.5)'; for (let i = 0; i < 6; i++) x.fillRect(W * 0.38 + i * W * 0.04, hz - 4, W * 0.02, 4); }
+    if (c.scene === 'lobby') { x.fillStyle = 'rgba(255,240,210,.08)'; x.fillRect(W * 0.3, hz * 0.15, W * 0.4, hz * 0.5); }
+  }
+  const boxes = [];
+  const obj = (kind, i) => {
+    const depth = 0.15 + r() * 0.8;
+    const y = hz + (H - hz) * depth;
+    const s = 0.35 + depth * 0.85;
+    const jitter = Math.sin(t / 900 + i * 1.7) * 3 * s;
+    let px = W * (0.12 + r() * 0.76) + jitter;
+    if (kind === 'person') {
+      const ph = H * 0.3 * s, pw = ph * 0.34;
+      x.fillStyle = ir ? 'rgba(210,225,215,.55)' : 'rgba(14,16,20,.85)';
+      x.beginPath(); x.roundRect(px - pw / 2, y - ph * 0.82, pw, ph * 0.82, pw * 0.35); x.fill();
+      x.beginPath(); x.arc(px, y - ph * 0.9, ph * 0.1, 0, Math.PI * 2); x.fill();
+      boxes.push({ kind, x: px - pw * 0.75, y: y - ph * 1.04, w: pw * 1.5, h: ph * 1.06, s });
+    } else {
+      const vh = H * 0.15 * s, vw = vh * 2.1;
+      x.fillStyle = ir ? 'rgba(200,215,205,.45)' : `rgba(${30 + r() * 60 | 0},${34 + r() * 40 | 0},${40 + r() * 40 | 0},.95)`;
+      x.beginPath(); x.roundRect(px - vw / 2, y - vh, vw, vh * 0.8, vh * 0.2); x.fill();
+      x.beginPath(); x.roundRect(px - vw * 0.3, y - vh * 1.3, vw * 0.6, vh * 0.4, vh * 0.15); x.fill();
+      x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(px - vw * 0.4, y - vh * 0.25, vw * 0.18, vh * 0.25); x.fillRect(px + vw * 0.22, y - vh * 0.25, vw * 0.18, vh * 0.25);
+      boxes.push({ kind: c.scene === 'gate' && i === 0 ? 'truck' : 'car', x: px - vw * 0.56, y: y - vh * 1.4, w: vw * 1.12, h: vh * 1.45, s });
+    }
+  };
+  for (let i = 0; i < c.vehicles; i++) obj('vehicle', i);
+  for (let i = 0; i < c.people; i++) obj('person', i + 10);
+  const alertBox = cv.dataset.alert || c.alert;
+  boxes.sort((a, b) => a.y + a.h - (b.y + b.h)).forEach((b, i) => {
+    const hot = alertBox && i === boxes.length - 1 && b.kind === 'person';
+    const col = hot ? '#ff5f56' : b.kind === 'person' ? '#7ea4ff' : '#f5b84a';
+    x.strokeStyle = col; x.lineWidth = hot ? 2 : 1.3; x.strokeRect(b.x, b.y, b.w, b.h);
+    const fs = Math.max(8.5, Math.min(11, W / 42));
+    x.font = `500 ${fs}px "IBM Plex Mono", monospace`;
+    const label = `${b.kind} ${(0.8 + r() * 0.19).toFixed(2)}`;
+    const tw = x.measureText(label).width + 6;
+    if (W > 150) { x.fillStyle = col; x.fillRect(b.x, b.y - fs - 3, tw, fs + 3); x.fillStyle = '#0a0d12'; x.fillText(label, b.x + 3, b.y - 3.5); }
+  });
+  // zone hint for alerting
+  if (alertBox) { x.fillStyle = 'rgba(255,95,86,.10)'; x.strokeStyle = 'rgba(255,95,86,.7)'; x.setLineDash([5, 4]); x.beginPath(); x.moveTo(W * 0.55, hz + 6); x.lineTo(W * 0.9, hz + 6); x.lineTo(W * 0.98, H * 0.95); x.lineTo(W * 0.5, H * 0.95); x.closePath(); x.fill(); x.stroke(); x.setLineDash([]); }
+  // heat overlay
+  if (cv.dataset.heat) {
+    x.globalCompositeOperation = 'lighter';
+    const hr = rng(7);
+    for (let i = 0; i < 26; i++) {
+      const cx = W * (0.25 + hr() * 0.55), cy = hz + (H - hz) * (0.15 + hr() * 0.8), rad = W * (0.04 + hr() * 0.09);
+      const hg = x.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      const hot = hr() > 0.6;
+      hg.addColorStop(0, hot ? 'rgba(255,95,86,.55)' : 'rgba(245,165,36,.35)'); hg.addColorStop(1, 'rgba(76,195,217,0)');
+      x.fillStyle = hg; x.fillRect(cx - rad, cy - rad, rad * 2, rad * 2);
+    }
+    x.globalCompositeOperation = 'source-over';
+  }
+  // grain + vignette
+  const n = (W * H) / 90;
+  for (let i = 0; i < n; i++) { x.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`; x.fillRect(Math.random() * W, Math.random() * H, 1, 1); }
+  const vg = x.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)'); x.fillStyle = vg; x.fillRect(0, 0, W, H);
+}
+
+/* ------- charts ------- */
+function bars(vals, { w = 640, h = 190, labels = HOURS, every = 3, hi = -1, ghost = null, color = 'var(--accent)' } = {}) {
+  const pl = 36, pb = 22, pt = 8, iw = w - pl - 4, ih = h - pb - pt;
+  const { step, top } = nice(Math.max(...vals, ...(ghost || [0])));
+  const bw = iw / vals.length;
+  let s = `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img">`;
+  for (let k = 0; k <= 4; k++) { const y = pt + ih - ih * k / 4; s += `<line x1="${pl}" x2="${w - 4}" y1="${y}" y2="${y}" stroke="var(--line)" ${k ? 'stroke-dasharray="2 4"' : ''}/><text x="${pl - 6}" y="${y + 3.5}" text-anchor="end">${fmt(step * k)}</text>`; }
+  if (ghost) { let d = ''; ghost.forEach((v, i) => { const y = pt + ih - ih * v / top, xx = pl + i * bw + bw / 2; d += (i ? 'L' : 'M') + xx.toFixed(1) + ' ' + y.toFixed(1); }); s += `<path d="${d}" fill="none" stroke="var(--muted)" stroke-width="1.3" stroke-dasharray="3 3"/>`; }
+  vals.forEach((v, i) => {
+    const bh = ih * v / top, xx = pl + i * bw + bw * 0.18;
+    const fill = i === hi ? color : (hi >= 0 && i > hi ? 'transparent' : color);
+    const op = i === hi ? 1 : 0.55;
+    if (v > 0) s += `<rect x="${xx.toFixed(1)}" y="${(pt + ih - bh).toFixed(1)}" width="${(bw * 0.64).toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${fill}" opacity="${op}"><title>${labels[i]}:00 · ${fmt(v)}</title></rect>`;
+    if (i % every === 0) s += `<text x="${pl + i * bw + bw / 2}" y="${h - 6}" text-anchor="middle">${labels[i]}</text>`;
+  });
+  if (hi >= 0) { const xx = pl + hi * bw + bw / 2; s += `<line x1="${xx}" x2="${xx}" y1="${pt}" y2="${pt + ih}" stroke="var(--accent)" stroke-width="1" opacity=".5"/><text x="${xx + 5}" y="${pt + 9}" fill="var(--accent)" style="fill:var(--accent)">now</text>`; }
+  return s + '</svg>';
+}
+function lines(series, labels, { w = 640, h = 200, every = 1, area = false } = {}) {
+  const pl = 36, pb = 22, pt = 10, iw = w - pl - 10, ih = h - pb - pt;
+  const { step, top } = nice(Math.max(...series.flatMap(s => s.v)));
+  const n = labels.length, dx = iw / (n - 1);
+  let s = `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img">`;
+  for (let k = 0; k <= 4; k++) { const y = pt + ih - ih * k / 4; s += `<line x1="${pl}" x2="${w - 10}" y1="${y}" y2="${y}" stroke="var(--line)" ${k ? 'stroke-dasharray="2 4"' : ''}/><text x="${pl - 6}" y="${y + 3.5}" text-anchor="end">${fmt(Math.round(step * k * 10) / 10)}</text>`; }
+  labels.forEach((l, i) => { if (i % every === 0 || i === n - 1) s += `<text x="${pl + i * dx}" y="${h - 6}" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${l}</text>`; });
+  series.forEach((se, si) => {
+    const pts = se.v.map((v, i) => [pl + i * dx, pt + ih - ih * v / top]);
+    const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+    if (area || se.area) s += `<defs><linearGradient id="g${si}${se.c.length}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${se.c}" stop-opacity=".35"/><stop offset="1" stop-color="${se.c}" stop-opacity="0"/></linearGradient></defs><path d="${d}L${pts.at(-1)[0]} ${pt + ih}L${pl} ${pt + ih}Z" fill="url(#g${si}${se.c.length})"/>`;
+    s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="${se.dash ? 1.4 : 2}" ${se.dash ? 'stroke-dasharray="4 4"' : ''} stroke-linejoin="round"/>`;
+    const e = pts.at(-1); s += `<circle cx="${e[0]}" cy="${e[1]}" r="3.5" fill="${se.c}" stroke="var(--panel)" stroke-width="2"/>`;
+  });
+  return s + '</svg>';
+}
+function spark(v, color = 'var(--accent)') {
+  const w = 160, h = 30, max = Math.max(...v), min = Math.min(...v), dx = w / (v.length - 1);
+  const pts = v.map((y, i) => [i * dx, h - 3 - (h - 6) * (y - min) / (max - min || 1)]);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+  const id = 'sp' + Math.random().toString(36).slice(2, 7);
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".28"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs><path d="${d}L${w} ${h}L0 ${h}Z" fill="url(#${id})"/><path d="${d}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+/* ======================= shell ======================= */
+const NAV = [
+  ['Monitor', [['dashboard', 'Dashboard', 'grid'], ['cameras', 'Cameras', 'camera', '11/12', 'n'], ['alerts', 'AI Alerts', 'alert', '3']]],
+  ['Respond', [['incidents', 'Incidents', 'shield', '5'], ['investigations', 'Investigations', 'search']]],
+  ['Insight', [['analytics', 'Analytics', 'chart'], ['reports', 'Reports', 'file'], ['assistant', 'AI Assistant', 'bot']]],
+  ['System', [['admin', 'Administration', 'cog']]],
+];
+const TITLES = { dashboard: 'Dashboard', cameras: 'Cameras', alerts: 'AI Alerts', incidents: 'Incidents', investigations: 'Investigations', analytics: 'Analytics', reports: 'Reports', assistant: 'AI Assistant', admin: 'Administration' };
+
+function shell(route, inner) {
+  return `<div class="shell">
+  <aside class="rail ${S.navOpen ? 'open' : ''}" aria-label="Primary">
+    <div class="brand"><div class="brand-mark">${ic('shield')}</div><div><div class="brand-name">Iso Safe</div><div class="brand-sub">Video intelligence</div></div></div>
+    <div class="site"><span><span class="muted">Site</span>&nbsp; Harbor DC-1</span><span class="status"><span class="dot"></span></span></div>
+    <nav class="nav">${NAV.map(([g, items]) => `<div class="nav-group"><div class="nav-label">${g}</div>${items.map(([k, l, i, c, cls]) => `<a href="#${k}" class="${route === k ? 'on' : ''}" ${route === k ? 'aria-current="page"' : ''}>${ic(i)}${l}${c ? `<span class="count ${cls || ''}">${c}</span>` : ''}</a>`).join('')}</div>`).join('')}</nav>
+    <div class="rail-foot">
+      <div class="agent">
+        <div style="display:flex;justify-content:space-between"><span class="status"><span class="dot"></span>Edge agent</span><span class="mono muted">v1.4.2 · 4s</span></div>
+        <div style="display:flex;justify-content:space-between" class="muted"><span>CPU</span><span class="mono">38%</span></div>
+        <div class="meter"><i style="width:38%"></i></div>
+      </div>
+      <div class="me"><div class="avatar">JR</div><div style="min-width:0;flex:1"><div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">j.reyes@harbordc.example</div><div class="muted" style="font-size:11.5px">Admin</div></div><a class="iconbtn" href="#login" title="Sign out" aria-label="Sign out">${ic('out')}</a></div>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="iconbtn menu-btn" data-act="nav" aria-label="Open navigation">${ic('menu')}</button>
+      <div class="crumb">Harbor DC-1 &nbsp;/&nbsp; <b>${TITLES[route]}</b></div>
+      <div class="search">${ic('search')}<span>Search cameras, plates, incidents…</span><kbd>Ctrl K</kbd></div>
+      <div class="top-right">
+        <span class="status-pill"><span class="dot crit"></span>2 critical · 11 of 12 cameras online</span>
+        <span class="clock" data-clock-full>Thu 5 Nov · 14:32:07</span>
+        <a class="iconbtn" href="#alerts" aria-label="Notifications, 3 unread">${ic('bell')}<span class="badge">3</span></a>
+      </div>
+    </header>
+    <main class="page" id="page">${inner}</main>
+  </div>
+</div>`;
+}
+
+/* ======================= pages ======================= */
+const V = {};
+
+V.dashboard = () => {
+  const live = CAMS.slice(0, 6);
+  const kpi = (lbl, val, d, dir, icn, sp, to, col) => `<a class="kpi" href="#${to}"><span class="lbl">${lbl}${ic(icn, `style="color:${col || 'var(--muted)'}"`)}</span><span class="val">${val}</span><span class="d ${dir}">${d}</span>${spark(sp, col || 'var(--accent)')}</a>`;
+  return `
+  <div class="page-head">
+    <div><h1>Operations overview</h1><p class="sub">Thursday 5 November · live since 06:00 shift start</p></div>
+    <div class="actions"><div class="seg" role="tablist"><button class="on">Today</button><button>7 days</button><button>30 days</button></div><a class="btn" href="#cameras">${ic('camera')}Open video wall</a></div>
+  </div>
+
+  <section class="situation" aria-label="Current situation">
+    <div class="alertcell">
+      <div><div class="lbl" style="color:var(--crit)">Needs attention</div><div class="big">2 critical alerts unacknowledged</div><div class="muted" style="font-size:12.5px">Oldest: Abandoned object · Lobby · 34 min</div></div>
+      <a class="btn danger" href="#alerts">Review now ${ic('right')}</a>
+    </div>
+    <div><span class="lbl">Open incidents</span><span class="big num">5</span><span class="muted" style="font-size:12px">2 past 30-min response target</span></div>
+    <div><span class="lbl">Cameras</span><span class="big num">11 <span class="muted" style="font-size:15px">/ 12 online</span></span><span style="font-size:12px;color:var(--crit)">Yard West offline 41 min</span></div>
+    <div><span class="lbl">Edge agent</span><span class="big">Healthy</span><span class="muted mono" style="font-size:12px">CPU 38% · 212 GB free</span></div>
+  </section>
+
+  <section class="kpis" aria-label="Key figures">
+    ${kpi('People today', '2,147', '▲ 6% vs yesterday', 'up', 'users', [140, 160, 150, 190, 210, 205, 240], 'analytics')}
+    ${kpi('Vehicles', '318', '▼ 4% vs yesterday', 'down', 'car', [40, 36, 44, 38, 35, 33, 31], 'analytics', 'var(--warn)')}
+    ${kpi('Active cameras', '11', '1 offline', 'flat', 'camera', [12, 12, 12, 12, 11, 11, 11], 'cameras', 'var(--ok)')}
+    ${kpi('Open incidents', '5', '▲ 2 since 12:00', 'down', 'shield', [1, 2, 2, 3, 3, 4, 5], 'incidents', 'var(--crit)')}
+    ${kpi('Suspicious activity', '9', '▼ 18% vs 7-day avg', 'up', 'tri', [14, 12, 11, 13, 10, 11, 9], 'alerts', 'var(--warn)')}
+    ${kpi('Avg occupancy', '38.4', '▲ 3% vs yesterday', 'up', 'gauge', [30, 33, 35, 34, 37, 36, 38], 'analytics')}
+  </section>
+
+  <div class="dash-grid">
+    <div class="col">
+      <section class="panel">
+        <div class="panel-h"><h2>Live cameras <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· sorted by activity</span></h2><a class="link" href="#cameras">All 12 cameras ${ic('right')}</a></div>
+        <div class="panel-b"><div class="wall">${live.map((c, i) => `<a class="tile" href="#cameras" style="text-decoration:none;color:inherit">${feed(c, { big: i === 0 })}<div class="cap"><b>${c.name}</b><span>${c.people ? c.people + ' in frame' : c.vehicles ? c.vehicles + ' vehicles' : 'No activity'}</span></div></a>`).join('')}</div></div>
+      </section>
+      <section class="panel">
+        <div class="panel-h"><h2>Footfall by hour</h2><div class="legend"><span><i style="background:var(--accent)"></i>Today</span><span><i style="background:var(--muted)"></i>Yesterday</span></div></div>
+        <div class="panel-b">${bars(FOOTFALL, { hi: 14, ghost: YESTERDAY })}</div>
+      </section>
+    </div>
+    <div class="col">
+      <section class="panel alert-feed">
+        <div class="panel-h" style="padding-bottom:12px"><h2>Live alerts</h2><a class="link" href="#alerts">Open triage ${ic('right')}</a></div>
+        ${ALERTS.slice(0, 5).map(a => `<a class="alert-item" href="#alerts" style="color:inherit;text-decoration:none" data-go-alert="${a.id}"><span class="bar" style="background:${sevColor(a.sev)}"></span><span><span class="t">${a.type}</span><span class="m" style="display:block">${camById[a.cam].name} · ${a.zone}</span></span><time>${a.t}</time></a>`).join('')}
+      </section>
+      <section class="panel">
+        <div class="panel-h"><h2>AI insights</h2><span class="muted mono" style="font-size:11.5px">updated 14:05</span></div>
+        <div class="panel-b">
+          <div class="insight"><span class="ic">${ic('spark')}</span><div><b>Dock B intrusions cluster after 14:00</b><p>4 of 5 zone intrusions this week happened while the dock door was open past 14:00.</p></div></div>
+          <div class="insight"><span class="ic">${ic('users')}</span><div><b>Lunch queue peaks 12:30–12:50</b><p>Cafeteria queue passed 5 people on 4 of the last 5 weekdays.</p></div></div>
+          <div class="insight"><span class="ic">${ic('camera')}</span><div><b>Gate 2 reconnects rising</b><p>3 reconnects today vs 0.4/day average. Check the PoE switch on pole G2.</p></div></div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-h"><h2>Incidents today by type</h2></div>
+        <div class="panel-b hbars">
+          ${[['Zone intrusion', 4, 'var(--crit)'], ['Loitering', 3, 'var(--warn)'], ['Stopped vehicle', 2, 'var(--warn)'], ['Abandoned object', 1, 'var(--crit)'], ['Queue threshold', 1, 'var(--info)']].map(([l, n, c]) => `<div class="hbar"><span>${l}</span><span class="mono">${n}</span><span class="track"><i style="width:${n / 4 * 100}%;background:${c}"></i></span></div>`).join('')}
+        </div>
+      </section>
+    </div>
+  </div>`;
+};
+
+V.cameras = () => {
+  const c = camById[S.cam];
+  const f = S.camFilter;
+  const list = CAMS.filter(x => f === 'all' || (f === 'online' && x.online) || (f === 'offline' && !x.online) || (f === 'upload' && x.upload));
+  const rules = [
+    ['Zone intrusion', 'critical', 'Restricted: Cage · person · cooldown 120 s'],
+    ['Loitering', 'warning', 'Dock apron · person · 30 s'],
+    ['Stopped vehicle', 'warning', 'Whole frame · 10 s'],
+    ['After-hours activity', 'critical', 'Whole frame · daily 22:00–06:00'],
+  ];
+  const tab = S.camTab;
+  return `
+  <div class="page-head">
+    <div><h1>Cameras</h1><p class="sub">12 sources · 11 streaming · 2 vertical profiles applied</p></div>
+    <div class="actions">
+      <button class="btn">${ic('radar')}ONVIF discovery</button>
+      <button class="btn">${ic('link')}Add live link</button>
+      <button class="btn">${ic('upload')}Upload video</button>
+      <button class="btn primary">${ic('plus')}Add camera</button>
+    </div>
+  </div>
+  <div class="toolbar">
+    <div class="seg">${[['all', 'All', 12], ['online', 'Online', 11], ['offline', 'Offline', 1], ['upload', 'Uploads', 1]].map(([k, l, n]) => `<button class="${f === k ? 'on' : ''}" data-camf="${k}">${l} <span class="c">${n}</span></button>`).join('')}</div>
+    <input class="input" id="cam-search" placeholder="Filter by name or ID" aria-label="Filter cameras">
+  </div>
+  <div class="split">
+    <div class="cam-grid">
+      ${list.map(x => `<button class="cam-card ${x.id === S.cam ? 'sel' : ''}" data-cam="${x.id}">
+        ${feed(x)}
+        <div class="cam-meta"><div style="min-width:0"><b>${x.name}</b><span class="muted mono" style="font-size:11px">${x.id}</span></div><span class="muted" style="white-space:nowrap">${x.today} today</span></div>
+        <div class="cam-health">${x.online ? `<span class="ok">● ${x.fps} fps</span>` : '<span class="bad">● offline</span>'}<span>${x.rc} reconnects</span><span style="margin-left:auto">${x.rules} rules</span></div>
+        ${x.err ? `<div style="font-size:11.5px;color:var(--warn);padding:0 4px">${x.err}</div>` : ''}
+      </button>`).join('')}
+    </div>
+    <aside class="panel detail" aria-label="Camera settings">
+      <div class="detail-h">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3>${c.name}</h3><span class="status"><span class="dot ${c.online ? '' : 'off'}"></span>${c.online ? 'Streaming' : 'Offline'}</span></div>
+        <div class="muted mono" style="font-size:11.5px">rtsp://10.0.4.${20 + CAMS.indexOf(c)}:554/stream1 · ${c.upload ? 'file loop' : 'RTSP'}</div>
+      </div>
+      <div class="tabs" role="tablist">${[['zones', 'Zones'], ['rules', 'Rules'], ['health', 'Health']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-camtab="${k}" role="tab" aria-selected="${tab === k}">${l}</button>`).join('')}</div>
+      <div class="scroll">
+        ${tab === 'zones' ? `<div class="section">
+          <div class="zone-wrap">${feed(c, { bare: true })}
+            <svg class="zones" viewBox="0 0 160 90" preserveAspectRatio="none" aria-hidden="true">
+              <polygon points="88,38 144,38 157,86 80,86" fill="rgba(255,95,86,.16)" stroke="#ff5f56" stroke-width=".6" stroke-dasharray="2 1.5"/>
+              <polygon points="10,52 70,40 76,86 4,86" fill="rgba(90,140,255,.16)" stroke="#5a8cff" stroke-width=".6"/>
+              <line x1="30" y1="30" x2="130" y2="30" stroke="#f5a524" stroke-width=".7"/>
+            </svg>
+          </div>
+          <div class="legend"><span><i style="background:var(--crit)"></i>Restricted: Cage</span><span><i style="background:var(--accent)"></i>Dock apron</span><span><i style="background:var(--warn)"></i>Door line</span></div>
+          <div style="display:flex;gap:8px"><button class="btn sm">${ic('plus')}Draw zone</button><button class="btn sm">${ic('plus')}Draw line</button></div>
+        </div>` : ''}
+        ${tab === 'rules' || tab === 'zones' ? `<div class="section">
+          <div style="display:flex;justify-content:space-between;align-items:center"><h2>Rules · ${rules.length}</h2><button class="btn sm">${ic('plus')}Add from template</button></div>
+          ${rules.map(([n, s, d]) => `<div class="rule"><span class="rn">${n}</span><span class="sev ${s}">${s}</span><span class="rd">${d}</span></div>`).join('')}
+        </div>` : ''}
+        ${tab === 'health' ? `<div class="section"><dl class="kv">
+          <div><dt>Frame rate</dt><dd class="mono">${c.fps} fps</dd></div><div><dt>Reconnects (24 h)</dt><dd class="mono">${c.rc}</dd></div>
+          <div><dt>Dropped frames</dt><dd class="mono">${c.online ? 37 : 0}</dd></div><div><dt>Detections today</dt><dd class="mono">${fmt(c.today * 6)}</dd></div>
+          <div><dt>Last frame</dt><dd class="mono">${c.online ? '0.1 s ago' : '41 min ago'}</dd></div><div><dt>Profile</dt><dd>Logistics / Warehouse</dd></div></dl>
+          <div>${lines([{ v: [14.9, 15, 14.8, 15, 14.2, 14.9, 15, 14.8, 14.7, 15, 14.8, c.fps], c: 'var(--ok)', area: true }], ['13:30', '', '', '', '', '', '', '', '', '', '', '14:30'], { h: 120, every: 11 })}</div>
+        </div>` : ''}
+        <div class="section" style="flex-direction:row;justify-content:space-between;align-items:center">
+          <span style="display:flex;gap:10px;align-items:center;font-size:13px"><span class="toggle ${c.online ? '' : 'off'}" role="switch" aria-checked="${c.online}" aria-label="Stream enabled"></span>Stream enabled</span>
+          <span style="display:flex;gap:8px"><button class="btn sm danger">${ic('trash')}Delete</button><button class="btn sm primary">Save changes</button></span>
+        </div>
+      </div>
+    </aside>
+  </div>`;
+};
+
+V.alerts = () => {
+  const f = S.alertFilter;
+  const list = ALERTS.filter(a => f === 'all' || a.sev === f);
+  const a = ALERTS.find(x => x.id === S.alert) || ALERTS[0];
+  const groups = [...new Set(list.map(x => x.group))];
+  return `
+  <div class="page-head">
+    <div><h1>AI alerts</h1><p class="sub">Triage detections from your rules. Escalate the ones that need a response.</p></div>
+    <div class="actions"><button class="btn">${ic('check')}Mark all read</button><span class="status-pill"><span class="dot"></span>Live stream connected</span></div>
+  </div>
+  <div class="toolbar"><div class="seg">${[['all', 'All', 8], ['critical', 'Critical', 4], ['warning', 'Warning', 3], ['info', 'Info', 1]].map(([k, l, n]) => `<button class="${f === k ? 'on' : ''}" data-alf="${k}">${k !== 'all' ? `<span class="dot ${k === 'critical' ? 'crit' : k === 'warning' ? 'warn' : ''}" style="${k === 'info' ? 'background:var(--info);box-shadow:none' : 'box-shadow:none'}"></span>` : ''}${l} <span class="c">${n}</span></button>`).join('')}</div>
+    <select class="input" style="width:200px" aria-label="Camera"><option>All cameras</option>${CAMS.map(c => `<option>${c.name}</option>`).join('')}</select></div>
+  <div class="split" style="grid-template-columns:minmax(0,1fr) 440px">
+    <section class="panel inbox" aria-label="Alert list">
+      ${groups.map(g => `<div class="inbox-group">${g}</div>${list.filter(x => x.group === g).map(x => `<button class="inbox-item ${x.id === a.id ? 'sel' : ''}" data-alert="${x.id}">
+        <span class="bar" style="background:${sevColor(x.sev)}"></span>
+        ${feed(x.cam, { bare: true, alert: x.sev === 'critical', seed: x.id })}
+        <span style="min-width:0"><span class="t">${x.unread ? '<span class="unread" aria-label="Unread"></span>' : ''}<b>${x.type}</b><span class="sev ${x.sev}">${x.sev}</span></span><span class="d" style="display:block">${x.d}</span></span>
+        <span class="r"><span style="display:block;color:var(--ink-2)">${camById[x.cam].name}</span><span class="mono">${x.t}</span> · ${x.ago}</span>
+      </button>`).join('')}`).join('')}
+    </section>
+    <aside class="panel detail" aria-label="Alert detail">
+      <div class="detail-h">
+        <div style="display:flex;gap:8px;align-items:center"><span class="sev ${a.sev}">${a.sev}</span><span class="muted mono" style="font-size:12px">Alert #${a.id}</span></div>
+        <h3 style="font-size:18px">${a.type}</h3><p class="ink2" style="font-size:13px">${a.d}</p>
+      </div>
+      <div class="scroll">
+        <div class="section">${feed(a.cam, { big: true, alert: a.sev !== 'info', seed: a.id })}
+          <div style="display:flex;justify-content:space-between" class="muted mono"><span style="font-size:11.5px">Snapshot · ${a.t}:04</span><a class="link" href="#cameras">${ic('play')}Open live view</a></div>
+        </div>
+        <div class="section"><dl class="kv">
+          <div><dt>Camera</dt><dd>${camById[a.cam].name}</dd></div><div><dt>Zone</dt><dd>${a.zone}</dd></div>
+          <div><dt>Rule</dt><dd class="mono" style="font-size:12px">${a.rule}</dd></div><div><dt>Confidence</dt><dd><span class="conf"><i style="--w:${a.conf * 100}%"></i>${Math.round(a.conf * 100)}%</span></dd></div>
+          <div><dt>Track</dt><dd class="mono">${a.track ? '#' + a.track : '—'}</dd></div><div><dt>Time</dt><dd class="mono">Nov 5, ${a.t}</dd></div>
+        </dl></div>
+        <div class="section" style="flex-direction:row;flex-wrap:wrap;gap:8px">
+          <a class="btn primary" href="#incidents">${ic('shield')}Escalate to incident</a>
+          <button class="btn">${ic('check')}Acknowledge</button>
+          <button class="btn ghost">Dismiss as false alarm</button>
+        </div>
+      </div>
+    </aside>
+  </div>`;
+};
+
+V.incidents = () => {
+  const counts = { open: 3, investigating: 2, resolved: 2, closed: 2 };
+  const list = INCIDENTS.filter(i => i.status === S.incTab);
+  const d = INCIDENTS.find(i => i.id === S.inc) || list[0] || INCIDENTS[0];
+  const people = ['', 'J. Reyes', 'M. Okafor', 'S. Lindqvist', 'A. Mensah'];
+  const ini = n => n ? n.split(/[ .]+/).filter(Boolean).map(p => p[0]).join('') : '';
+  return `
+  <div class="page-head">
+    <div><h1>Incidents</h1><p class="sub">Response target: acknowledge critical incidents within 30 minutes</p></div>
+    <div class="actions"><select class="input" style="width:150px" aria-label="Severity"><option>All severities</option><option>Critical</option><option>Warning</option><option>Info</option></select><select class="input" style="width:170px" aria-label="Camera"><option>All cameras</option>${CAMS.map(c => `<option>${c.name}</option>`).join('')}</select><button class="btn">${ic('download')}Export</button></div>
+  </div>
+  <div class="status-tabs" role="tablist">
+    ${[['open', 'Open', 'crit'], ['investigating', 'Investigating', 'warn'], ['resolved', 'Resolved', ''], ['closed', 'Closed', 'off']].map(([k, l, dc]) => `<button class="stab ${S.incTab === k ? 'on' : ''}" data-inctab="${k}" role="tab" aria-selected="${S.incTab === k}"><span class="l"><span class="dot ${dc}" style="box-shadow:none"></span>${l}</span><span class="n">${counts[k]}</span></button>`).join('')}
+  </div>
+  <div class="split" style="grid-template-columns:minmax(0,1fr) 420px">
+    <section class="panel table-wrap">
+      <table class="t"><thead><tr><th></th><th>ID</th><th>Incident</th><th>Camera</th><th>Opened</th><th>Age</th><th>Assignee</th></tr></thead>
+      <tbody>${list.map(i => `<tr class="${i.id === d.id ? 'sel' : ''}" data-inc="${i.id}" tabindex="0"><td class="stripe"><i style="background:${sevColor(i.sev)}"></i></td><td class="mono muted">#${i.id}</td><td><div style="display:flex;gap:8px;align-items:center"><span class="sev ${i.sev}">${i.sev}</span><b style="font-weight:500">${i.type}</b></div></td><td class="ink2">${camById[i.cam].name}</td><td class="mono muted" style="font-size:12px">${i.ts}</td><td><span class="age ${i.late && (i.status === 'open' || i.status === 'investigating') ? 'late' : ''}">${i.age}</span></td><td>${i.who ? `<span style="display:inline-flex;gap:7px;align-items:center"><span class="avatar sm">${ini(i.who)}</span>${i.who}</span>` : '<span class="muted">Unassigned</span>'}</td></tr>`).join('')}</tbody></table>
+    </section>
+    <aside class="panel detail" aria-label="Incident detail">
+      <div class="detail-h">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="display:flex;gap:8px;align-items:center"><span class="sev ${d.sev}">${d.sev}</span><span class="mono muted" style="font-size:12px">#${d.id}</span></span><button class="iconbtn" aria-label="Close">${ic('x')}</button></div>
+        <h3 style="font-size:18px">${d.type}</h3><p class="ink2" style="font-size:13px">${d.d}</p>
+        <p class="muted mono" style="font-size:11.5px">${camById[d.cam].name} · ${d.ts}</p>
+      </div>
+      <div class="scroll">
+        <div class="section">${feed(d.cam, { alert: d.sev === 'critical', big: true, seed: d.id })}</div>
+        <div class="section">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="field"><label for="inc-status">Status</label><select class="input" id="inc-status">${['open', 'investigating', 'resolved', 'closed'].map(s => `<option ${s === d.status ? 'selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`).join('')}</select></div>
+            <div class="field"><label for="inc-who">Assignee</label><select class="input" id="inc-who">${people.map(p => `<option ${p === d.who ? 'selected' : ''}>${p || 'Unassigned'}</option>`).join('')}</select></div>
+          </div>
+          <div class="field"><label for="inc-notes">Notes</label><textarea class="input" id="inc-notes" rows="3" placeholder="What did you find? Notes save when you leave the field."></textarea></div>
+        </div>
+        <div class="section"><h2>Activity</h2><div class="timeline">
+          <div class="tl"><span class="pt c"></span><div><b>Detected by rule ${d.type.toLowerCase()}</b><p>${d.ts} · confidence 94%</p></div></div>
+          <div class="tl"><span class="pt a"></span><div><b>Alert pushed to 3 operators</b><p>${d.ts} · web, email</p></div></div>
+          ${d.who ? `<div class="tl"><span class="pt a"></span><div><b>Assigned to ${d.who}</b><p>+4 min</p></div></div>` : '<div class="tl"><span class="pt"></span><div><b>Awaiting assignment</b><p>No one has picked this up yet</p></div></div>'}
+        </div></div>
+      </div>
+    </aside>
+  </div>`;
+};
+
+V.analytics = () => {
+  const r = S.range;
+  const L = r === '24h' ? HOURS : r === '7d' ? ['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'] : Array.from({ length: 30 }, (_, i) => i % 5 === 0 ? `Oct ${7 + i > 31 ? '' : 7 + i}` : '').map((x, i) => x || (i === 29 ? 'Nov 5' : ''));
+  const n = L.length;
+  const g = (base, amp, seed) => { const q = rng(seed); return Array.from({ length: n }, (_, i) => Math.max(0, Math.round(base + amp * Math.sin(i / n * Math.PI * (r === '24h' ? 2 : 4) - 1) + q() * amp * 0.5))); };
+  const foot = r === '24h' ? YESTERDAY : g(1900, 500, 3);
+  const veh = r === '24h' ? YESTERDAY.map(v => Math.round(v * 0.14)) : g(300, 80, 5);
+  const qa = g(3, 2, 9), qm = qa.map(v => v + 3), occ = g(34, 8, 11), inc = g(2, 2, 13);
+  const every = r === '24h' ? 3 : r === '7d' ? 1 : 5;
+  return `
+  <div class="page-head"><div><h1>Analytics</h1><p class="sub">People, vehicles, queues and occupancy across your cameras</p></div><div class="actions"><a class="btn" href="#reports">${ic('file')}Make a report from this view</a></div></div>
+  <div class="filterbar">
+    <select class="input" aria-label="Camera"><option>All cameras</option>${CAMS.map(c => `<option>${c.name}</option>`).join('')}</select>
+    <div class="seg">${[['24h', 'Last 24 h'], ['7d', 'Last 7 days'], ['30d', 'Last 30 days']].map(([k, l]) => `<button class="${r === k ? 'on' : ''}" data-range="${k}">${l}</button>`).join('')}</div>
+    <span class="muted" style="font-size:12.5px;margin-left:auto">Compared with the previous ${r === '24h' ? '24 hours' : r === '7d' ? '7 days' : '30 days'}</span>
+  </div>
+  <section class="summary">
+    <div class="kpi"><span class="lbl">Footfall</span><span class="val">${fmt(foot.reduce((a, b) => a + b, 0))}</span><span class="d up">▲ 6.2%</span></div>
+    <div class="kpi"><span class="lbl">Vehicles</span><span class="val">${fmt(veh.reduce((a, b) => a + b, 0))}</span><span class="d down">▼ 3.9%</span></div>
+    <div class="kpi"><span class="lbl">Peak queue</span><span class="val">${Math.max(...qm)}</span><span class="d flat">Cafeteria · 12:41</span></div>
+    <div class="kpi"><span class="lbl">Incidents</span><span class="val">${inc.reduce((a, b) => a + b, 0)}</span><span class="d up">▼ 11%</span></div>
+  </section>
+  <div class="charts">
+    <section class="panel"><div class="panel-h"><h2>Footfall</h2></div><div class="panel-b">${lines([{ v: foot, c: 'var(--accent)', area: true }], L, { every })}</div></section>
+    <section class="panel"><div class="panel-h"><h2>Vehicles</h2></div><div class="panel-b">${bars(veh, { labels: L, every, color: 'var(--warn)', h: 200 })}</div></section>
+    <section class="panel"><div class="panel-h"><h2>Queue length</h2><div class="legend"><span><i style="background:var(--info)"></i>Average</span><span><i style="background:var(--crit)"></i>Max</span></div></div><div class="panel-b">${lines([{ v: qa, c: 'var(--info)' }, { v: qm, c: 'var(--crit)', dash: true }], L, { every })}</div></section>
+    <section class="panel"><div class="panel-h"><h2>Occupancy and incidents</h2><div class="legend"><span><i style="background:var(--ok)"></i>Avg occupancy</span><span><i style="background:var(--crit)"></i>Incidents</span></div></div><div class="panel-b">${lines([{ v: occ, c: 'var(--ok)', area: true }, { v: inc, c: 'var(--crit)' }], L, { every })}</div></section>
+  </div>
+  <section class="panel"><div class="panel-h"><h2>Movement heatmap · Loading Dock B</h2><span class="muted mono" style="font-size:11.5px">last hour</span></div>
+    <div class="panel-b heat">${feed('cam-dock-b', { bare: true, heat: true, alert: false })}
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <p class="ink2">Most movement sits on the dock apron and the path to the cage door. The cage itself should be empty outside loading windows.</p>
+        <div><div class="scale"></div><div style="display:flex;justify-content:space-between;font-size:11.5px" class="muted mono"><span>low</span><span>high</span></div></div>
+        <dl class="kv"><div><dt>Busiest cell</dt><dd>Dock door 3 approach</dd></div><div><dt>Dwell &gt; 30 s</dt><dd class="mono">14 tracks</dd></div></dl>
+      </div>
+    </div>
+  </section>`;
+};
+
+V.reports = () => {
+  const R = [
+    ['daily_summary', 'Daily summary', 'Footfall, vehicles, occupancy and incidents for the last day.', 'Last 24 h', 'file'],
+    ['weekly_security', 'Weekly security', 'Every security incident from the last 7 days with a severity breakdown.', 'Last 7 days', 'shield'],
+    ['monthly_business', 'Monthly business', 'Business metrics and per-camera trends over 30 days.', 'Last 30 days', 'chart'],
+    ['incident_report', 'Incident report', 'Detailed incident log for the selected period.', 'Custom range', 'alert'],
+    ['camera_health', 'Camera health', 'Camera inventory, uptime and stream status.', 'Current', 'camera'],
+  ];
+  const sel = R.find(x => x[0] === S.report);
+  return `
+  <div class="page-head"><div><h1>Reports</h1><p class="sub">Download as PDF for sharing or Excel for your own analysis</p></div></div>
+  <div class="reports">
+    <section class="panel rep-list">${R.map(([id, n, d, p, i]) => `<div class="rep ${id === S.report ? 'sel' : ''}" data-rep="${id}" role="button" tabindex="0">
+      <span class="ic">${ic(i)}</span><span><b>${n}</b><p>${d}</p><span class="tag" style="margin-top:6px">${ic('clock', 'style="width:12px;height:12px"')}${p}</span></span>
+      <span class="actions"><button class="btn sm">${ic('file')}PDF</button><button class="btn sm">${ic('sheet')}Excel</button></span>
+    </div>`).join('')}</section>
+    <aside class="panel detail" aria-label="Report preview">
+      <div class="panel-h"><h2>Preview · ${sel[1]}</h2><span class="muted mono" style="font-size:11.5px">PDF · 3 pages</span></div>
+      <div class="panel-b">
+        <div class="paper">
+          <div style="display:flex;justify-content:space-between;align-items:center"><h4>${sel[1]}</h4><span style="font-size:9px;color:#6b6f75">Harbor DC-1 · Nov 5</span></div>
+          <div class="pk"><div>Footfall<b>2,147</b></div><div>Vehicles<b>318</b></div><div>Incidents<b>11</b></div></div>
+          <svg viewBox="0 0 300 70" style="width:100%">${FOOTFALL.map((v, i) => `<rect x="${i * 12.4 + 2}" y="${66 - v / 4}" width="8" height="${v / 4}" fill="#3355c7" opacity=".8"/>`).join('')}<line x1="0" x2="300" y1="66.5" y2="66.5" stroke="#bbb"/></svg>
+          <div class="rows">${INCIDENTS.slice(0, 5).map(i => `<div><span>#${i.id} ${i.type}</span><span>${i.sev}</span></div>`).join('')}</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px"><button class="btn primary" style="flex:1;justify-content:center">${ic('download')}Download PDF</button><button class="btn" style="flex:1;justify-content:center">${ic('sheet')}Download Excel</button></div>
+      </div>
+    </aside>
+  </div>`;
+};
+
+V.investigations = () => {
+  const hist = [2, 1, 1, 0, 1, 3, 9, 22, 31, 26, 19, 21, 28, 30, 24, 4, 0, 0, 0, 0, 0, 0, 0, 0];
+  const det = [
+    ['14:29:51', 'cam-gate-2', 'truck', 790, 'Exit lane', 'KJ62 RXT', 0.97], ['14:21:08', 'cam-gate-2', 'car', 786, 'Entry lane', 'LD19 HFA', 0.95],
+    ['13:47:33', 'cam-lot-n', 'car', 771, 'Bay row C', 'KJ62 RXT', 0.91], ['12:58:02', 'cam-gate-2', 'car', 760, 'Entry lane', 'BX70 MNE', 0.93],
+    ['11:16:44', 'cam-gate-2', 'truck', 744, 'Entry lane', 'KJ62 RXT', 0.96], ['09:03:19', 'cam-lot-n', 'car', 721, 'Bay row A', 'YH68 OPC', 0.88],
+    ['08:12:57', 'cam-gate-2', 'motorcycle', 703, 'Entry lane', '—', 0.82],
+  ];
+  return `
+  <div class="page-head"><div><h1>Investigations</h1><p class="sub">Search every detection and incident by time, place, object or plate</p></div><div class="actions"><button class="btn">${ic('download')}Export results</button></div></div>
+  <section class="panel">
+    <div class="query">
+      <div class="field"><label for="q-from">From</label><input class="input" id="q-from" type="datetime-local" value="2026-11-05T06:00"></div>
+      <div class="field"><label for="q-to">To</label><input class="input" id="q-to" type="datetime-local" value="2026-11-05T14:32"></div>
+      <div class="field"><label for="q-cam">Camera</label><select class="input" id="q-cam"><option>Gate 2 · Vehicles</option><option>Any camera</option></select></div>
+      <div class="field"><label for="q-obj">Object</label><select class="input" id="q-obj"><option>Any vehicle</option><option>person</option><option>car</option><option>truck</option></select></div>
+      <div class="field"><label for="q-plate">Plate contains</label><input class="input mono" id="q-plate" value="KJ62"></div>
+      <button class="btn primary" style="height:34px">${ic('search')}Search</button>
+    </div>
+    <div class="chips"><span class="muted" style="font-size:12px">Active:</span><span class="chip">Today 06:00–14:32 <button aria-label="Remove">${ic('x')}</button></span><span class="chip">Gate 2 · Lot North <button aria-label="Remove">${ic('x')}</button></span><span class="chip">Plate ~ KJ62 <button aria-label="Remove">${ic('x')}</button></span><button class="link" style="font-size:12px">Clear all</button></div>
+  </section>
+  <section class="panel"><div class="panel-h"><h2>Detections over time</h2><span class="muted" style="font-size:12.5px">Drag across the chart to narrow the time range</span></div>
+    <div class="panel-b" style="position:relative">${bars(hist, { h: 120, every: 2 }).replace('</svg>', `<rect x="${36 + 8 * 25}" y="8" width="${25 * 7}" height="90" fill="rgba(90,140,255,.10)" stroke="var(--accent)" stroke-dasharray="3 3"/></svg>`)}</div>
+  </section>
+  <section class="col" style="gap:10px"><h2>Matching incidents · 2</h2>
+    <div class="thumbs">
+      <div class="thumb">${feed('cam-gate-2', { bare: true, seed: 790 })}<div class="m"><span><span class="sev warning">Stopped vehicle</span></span><span class="mono">14:19</span></div></div>
+      <div class="thumb">${feed('cam-lot-n', { bare: true, seed: 771 })}<div class="m"><span><span class="sev warning">Loitering</span></span><span class="mono">Nov 4 21:10</span></div></div>
+    </div>
+  </section>
+  <section class="col" style="gap:10px"><div style="display:flex;justify-content:space-between;align-items:center"><h2>Detections · 7 of 7</h2><span class="muted" style="font-size:12.5px">KJ62 RXT seen 3 times today</span></div>
+    <div class="panel table-wrap"><table class="t"><thead><tr><th>Time</th><th>Camera</th><th>Object</th><th>Track</th><th>Zone</th><th>Plate</th><th>Confidence</th></tr></thead>
+    <tbody>${det.map(([t, c, o, tr, z, p, cf]) => `<tr><td class="mono">${t}</td><td class="ink2">${camById[c].name}</td><td>${o}</td><td class="mono muted">#${tr}</td><td class="muted">${z}</td><td>${p === '—' ? '<span class="muted">—</span>' : `<span class="plate">${p}</span>`}</td><td><span class="conf"><i style="--w:${cf * 100}%"></i>${Math.round(cf * 100)}%</span></td></tr>`).join('')}</tbody></table></div>
+  </section>`;
+};
+
+V.assistant = () => {
+  const base = `
+    <div class="msg-u">Which camera had the most loitering alerts this week?</div>
+    <div class="msg-a"><span class="av">${ic('bot')}</span><div class="body">
+      <p>Perimeter East had the most loitering alerts this week with <b>9</b>, more than the next two cameras combined. Most fired between 19:00 and 23:00.</p>
+      <div class="panel table-wrap" style="background:var(--bg)"><table class="t"><thead><tr><th>Camera</th><th>Loitering alerts</th><th>Share</th></tr></thead><tbody>
+        ${[['Perimeter East', 9, 50], ['Parking Lot North', 5, 28], ['Loading Dock B', 3, 17], ['Main Entrance', 1, 5]].map(([c, n, s]) => `<tr style="cursor:default"><td>${c}</td><td class="mono">${n}</td><td><span class="conf"><i style="--w:${s}%"></i>${s}%</span></td></tr>`).join('')}
+      </tbody></table></div>
+      <details class="sqlbox"><summary>${ic('db', 'style="width:13px;height:13px"')}Show the query that produced this</summary><div class="sql">SELECT camera_id, COUNT(*) AS alerts
+FROM incidents
+WHERE incident_type = 'loitering'
+  AND ts &gt;= now() - interval '7 days'
+GROUP BY camera_id
+ORDER BY alerts DESC;</div></details>
+      <div style="display:flex;gap:8px"><a class="btn sm" href="#incidents">Open these incidents</a><button class="btn sm ghost">Copy table</button></div>
+    </div></div>`;
+  const extra = S.chat.map(q => `<div class="msg-u">${q}</div><div class="msg-a"><span class="av">${ic('bot')}</span><div class="body"><p class="ink2">In the live product this answer is computed from your own detections and incidents. This preview only shows the layout.</p></div></div>`).join('');
+  return `
+  <div class="page-head"><div><h1>AI assistant</h1><p class="sub">Ask about detections, incidents and analytics in plain English</p></div><div class="actions"><button class="btn">${ic('plus')}New conversation</button></div></div>
+  <div class="chat-wrap">
+    <section class="panel chat"><div class="msgs" id="msgs">${base}${extra}</div>
+      <form class="composer" data-form="ask"><input class="input" id="ask" placeholder="Ask a question, for example: busiest hour yesterday?" aria-label="Your question" autocomplete="off"><button class="btn primary" style="height:42px" type="submit">${ic('send')}Ask</button></form>
+    </section>
+    <aside class="col">
+      <section class="panel"><div class="panel-h"><h2>Try asking</h2></div><div class="panel-b suggest">
+        ${['How many people entered today compared to yesterday?', 'Show critical incidents from the last 7 days', 'List all vehicle plates seen at Gate 2 today', 'What was the busiest hour yesterday?'].map(q => `<button data-ask="${q}">${q}</button>`).join('')}
+      </div></section>
+      <section class="panel"><div class="panel-h"><h2>Today’s insights</h2><button class="btn sm ghost">Refresh</button></div><div class="panel-b">
+        <div class="insight"><span class="ic">${ic('spark')}</span><div><b>Dock B intrusions cluster after 14:00</b><p>4 of 5 this week happened with the dock door open.</p></div></div>
+        <div class="insight"><span class="ic">${ic('users')}</span><div><b>Footfall up 6% on Thursday</b><p>Mainly the 08:00 shift change at Main Entrance.</p></div></div>
+      </div></section>
+      <div class="privacy">${ic('lock')}<span>Only your question text is sent to the AI model. Video, images and raw detections stay on your site.</span></div>
+    </aside>
+  </div>`;
+};
+
+V.admin = () => {
+  const t = S.adminTab;
+  const users = [['j.reyes@harbordc.example', 'admin', 'Mar 2, 2026', 'now'], ['m.okafor@harbordc.example', 'operator', 'Mar 2, 2026', '12 min ago'], ['s.lindqvist@harbordc.example', 'operator', 'Apr 18, 2026', '1 h ago'], ['a.mensah@harbordc.example', 'operator', 'Jun 9, 2026', 'yesterday'], ['frontdesk@harbordc.example', 'viewer', 'Aug 21, 2026', '3 days ago']];
+  const hc = (l, v, s, ok, icn) => `<div class="hcard"><span class="top"><span style="display:flex;gap:7px;align-items:center">${ic(icn)}${l}</span><span class="dot ${ok === true ? '' : ok === 'warn' ? 'warn' : 'crit'}"></span></span><span class="v">${v}</span><span class="s">${s}</span></div>`;
+  return `
+  <div class="page-head"><div><h1>Administration</h1><p class="sub">Users, system health and footage for Harbor DC-1</p></div></div>
+  <div class="tabs" style="padding:0" role="tablist">${[['health', 'System health'], ['users', 'Users and roles'], ['upload', 'Footage upload']].map(([k, l]) => `<button class="${t === k ? 'on' : ''}" data-admintab="${k}" role="tab" aria-selected="${t === k}">${l}</button>`).join('')}</div>
+  ${t === 'health' ? `
+  <section class="health-cards">
+    ${hc('API', 'Healthy', 'p95 82 ms', true, 'server')}${hc('Database', 'Healthy', '14.2 GB · 3 conns', true, 'db')}${hc('Redis', 'Healthy', '1.1 ms ping', true, 'zap')}${hc('Cameras', '11 / 12', 'Yard West down', 'warn', 'camera')}${hc('Edge agent', 'Online', 'v1.4.2 · seen 4 s ago', true, 'cpu')}
+  </section>
+  <section class="panel"><div class="panel-h"><h2>Edge agent resources</h2><span class="muted mono" style="font-size:11.5px">agent-harbor-01</span></div><div class="panel-b res">
+    <div><div style="display:flex;justify-content:space-between"><span>CPU</span><span class="mono">38%</span></div><div class="meter"><i style="width:38%"></i></div></div>
+    <div><div style="display:flex;justify-content:space-between"><span>Memory</span><span class="mono">61%</span></div><div class="meter"><i style="width:61%"></i></div></div>
+    <div><div style="display:flex;justify-content:space-between"><span>Disk free</span><span class="mono">212 GB of 500</span></div><div class="meter"><i style="width:58%;background:var(--ok)"></i></div></div>
+  </div></section>
+  <section class="panel table-wrap"><div class="panel-h" style="padding-bottom:10px"><h2>Camera streams</h2></div><table class="t"><thead><tr><th>Camera</th><th>Status</th><th>FPS</th><th>Reconnects</th><th>Dropped frames</th><th>Last error</th></tr></thead>
+  <tbody>${CAMS.map(c => `<tr style="cursor:default"><td>${c.name}</td><td><span class="status"><span class="dot ${c.online ? '' : 'crit'}" style="box-shadow:none"></span>${c.online ? 'Online' : 'Offline'}</span></td><td class="mono">${c.fps}</td><td class="mono ${c.rc > 2 ? '' : 'muted'}" style="${c.rc > 2 ? 'color:var(--warn)' : ''}">${c.rc}</td><td class="mono muted">${c.online ? (c.seed * 7) % 90 : 0}</td><td class="muted" style="font-size:12px">${c.err || '—'}</td></tr>`).join('')}</tbody></table></section>` : ''}
+  ${t === 'users' ? `
+  <section class="panel"><div class="panel-h"><h2>Invite a user</h2></div><div class="panel-b" style="display:grid;grid-template-columns:2fr 1.4fr 1fr auto;gap:10px;align-items:end">
+    <div class="field"><label for="u-email">Email</label><input class="input" id="u-email" placeholder="name@company.com"></div>
+    <div class="field"><label for="u-pass">Temporary password</label><input class="input" id="u-pass" type="password" placeholder="At least 8 characters"></div>
+    <div class="field"><label for="u-role">Role</label><select class="input" id="u-role"><option>viewer</option><option>operator</option><option>admin</option></select></div>
+    <button class="btn primary" style="height:34px">${ic('plus')}Add user</button>
+  </div><div class="panel-b" style="padding-top:0;display:flex;gap:16px;flex-wrap:wrap;font-size:12px" class="muted"><span><span class="role viewer">viewer</span> sees dashboards and video</span><span><span class="role operator">operator</span> also manages incidents and uploads</span><span><span class="role admin">admin</span> also manages cameras and users</span></div></section>
+  <section class="panel table-wrap"><table class="t"><thead><tr><th>User</th><th>Role</th><th>Created</th><th>Last active</th><th></th></tr></thead>
+  <tbody>${users.map(([e, r, c, l]) => `<tr style="cursor:default"><td><span style="display:inline-flex;gap:9px;align-items:center"><span class="avatar sm">${e.slice(0, 2).toUpperCase()}</span>${e}</span></td><td><span class="role ${r}">${r}</span></td><td class="muted">${c}</td><td class="muted">${l}</td><td style="text-align:right"><button class="btn sm ghost">Change role</button><button class="iconbtn" style="display:inline-grid" aria-label="Remove ${e}">${ic('trash')}</button></td></tr>`).join('')}</tbody></table></section>` : ''}
+  ${t === 'upload' ? `
+  <section class="panel"><div class="panel-b" style="display:flex;flex-direction:column;gap:16px">
+    <div class="drop"><span class="ic">${ic('upload')}</span><b style="font-weight:500;color:var(--ink)">Drop a video file here, or choose one</b><span class="muted" style="font-size:12.5px">MP4, AVI, MOV, MKV or WebM up to 500 MB. It plays on a loop as a camera so you can test rules.</span><button class="btn">Choose file</button></div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:center"><span>dock-b-incident-oct30.mp4 <span class="muted mono" style="font-size:12px">· 312 MB</span></span><span class="mono muted">64%</span><div class="progress" style="grid-column:1/-1"><i></i></div></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px"><span>night-shift-oct28.mp4 <span class="muted">added as</span> <span class="mono">up-nightshift</span></span><a class="link" href="#cameras">Open in Cameras ${ic('right')}</a></div>
+  </div></section>` : ''}`;
+};
+
+V.login = () => `
+  <div class="login">
+    <div class="login-art" aria-hidden="true">
+      <div class="mosaic">${CAMS.slice(0, 9).map(c => feed(c, { bare: true, alert: false })).join('')}</div>
+      <div class="veil"></div>
+      <div class="copy">
+        <div class="brand" style="padding:0"><div class="brand-mark">${ic('shield')}</div><div class="brand-name">Iso Safe</div></div>
+        <h1>See what matters on every camera, as it happens.</h1>
+        <p>Detection, rules and incident response for your sites, running on your own edge hardware.</p>
+        <div class="facts"><div><b>12</b>cameras watched</div><div><b>8</b>rule types</div><div><b>&lt; 2 s</b>alert latency</div></div>
+      </div>
+    </div>
+    <div class="login-form">
+      <form data-form="login">
+        <div><h1 style="font-size:24px">Sign in</h1><p class="muted" style="margin-top:4px">Use the account your administrator created for you.</p></div>
+        <div class="field"><label for="l-email">Work email</label><input class="input" id="l-email" type="email" placeholder="name@company.com" autocomplete="off"></div>
+        <div class="field"><label for="l-pass" style="display:flex;justify-content:space-between">Password</label><input class="input" id="l-pass" type="password" autocomplete="off"></div>
+        <button class="btn primary" type="submit">Sign in</button>
+        <p class="muted" style="font-size:12px;display:flex;gap:8px;align-items:center">${ic('lock', 'style="width:13px;height:13px"')}Sessions end after 12 hours. Forgot your password? Ask your site admin.</p>
+        <a class="link" href="#dashboard">Back to the dashboard preview ${ic('right')}</a>
+      </form>
+    </div>
+  </div>`;
+
+/* ======================= design notes ======================= */
+const NOTES = {
+  dashboard: ['Status strip at the top answers "is anything wrong right now?" before any numbers.', 'KPI tiles gain 7-point sparklines and plain-language deltas.', 'Footfall chart overlays yesterday as a dashed line and marks the current hour.', 'New "incidents today by type" breakdown in the right rail.'],
+  cameras: ['Filter chips with counts (All / Online / Offline / Uploads).', 'Each card shows health (fps, reconnects, rules) in a fixed footer, so it lines up.', 'Zones and rules open in a side panel instead of a modal, so the grid stays visible.'],
+  alerts: ['Becomes a triage inbox: list on the left, snapshot and context on the right.', 'Grouped by Now / Earlier today, with unread dots.', 'Clear actions: escalate, acknowledge, dismiss as false alarm.'],
+  incidents: ['Status tabs double as counters.', 'Severity stripe, age column (amber once past the 30-min target) and assignee avatars.', 'Detail moves from a modal to a side panel with an activity timeline.'],
+  analytics: ['One filter bar with segmented time ranges.', 'Summary row before the charts.', 'Heatmap drawn over the camera frame with a short reading of it.'],
+  reports: ['List with a live preview of what the PDF contains.', 'Time window shown on each report.'],
+  investigations: ['Query builder plus removable filter chips.', 'Detections-over-time chart for narrowing the range.', 'Plates styled like plates; confidence as a bar.'],
+  assistant: ['Chat layout with answers as tables; SQL tucked behind "Show the query".', 'Suggestions, insights and the privacy promise in a side rail.'],
+  admin: ['Split into tabs: System health, Users and roles, Footage upload.', 'Health cards with status dots; agent CPU, memory and disk as meters.', 'Role pills with a one-line explanation of each role.'],
+  login: ['Split screen: live camera mosaic and product promise on the left, short form on the right.'],
+};
+
+/* ======================= render ======================= */
+let route = 'dashboard';
+function render() {
+  const h = (location.hash || '#dashboard').slice(1);
+  route = V[h] ? h : 'dashboard';
+  const app = document.getElementById('app');
+  const inner = V[route]();
+  app.innerHTML = (route === 'login' ? inner : shell(route, inner)) + notesHtml();
+  document.title = 'Iso Safe Redesign Preview';
+  requestAnimationFrame(() => drawAll(performance.now()));
+  window.scrollTo(0, 0);
+}
+function notesHtml() {
+  const n = NOTES[route] || [];
+  return `<aside class="notes ${S.notesOpen ? '' : 'min'}" aria-label="Design notes"><div class="notes-h"><b>${ic('layers')}What changed on this page</b><button class="iconbtn" style="width:26px;height:26px" data-act="notes" aria-label="${S.notesOpen ? 'Collapse' : 'Expand'} design notes">${ic(S.notesOpen ? 'x' : 'plus')}</button></div><ul>${n.map(x => `<li>${x}</li>`).join('')}</ul></aside>`;
+}
+function drawAll(t) { document.querySelectorAll('canvas[data-feed]').forEach(cv => drawFeed(cv, t)); }
+function rerender() { const y = window.scrollY; const app = document.getElementById('app'); const inner = V[route](); app.innerHTML = (route === 'login' ? inner : shell(route, inner)) + notesHtml(); requestAnimationFrame(() => { drawAll(performance.now()); window.scrollTo(0, y); }); }
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-cam],[data-camtab],[data-camf],[data-alert],[data-alf],[data-inc],[data-inctab],[data-range],[data-rep],[data-admintab],[data-act],[data-ask],[data-go-alert]');
+  if (!el) return;
+  const d = el.dataset;
+  if (d.goAlert) { S.alert = Number(d.goAlert); return; }
+  if (d.cam) S.cam = d.cam;
+  else if (d.camtab) S.camTab = d.camtab;
+  else if (d.camf) S.camFilter = d.camf;
+  else if (d.alert) S.alert = Number(d.alert);
+  else if (d.alf) S.alertFilter = d.alf;
+  else if (d.inc) S.inc = Number(d.inc);
+  else if (d.inctab) { S.incTab = d.inctab; S.inc = (INCIDENTS.find(i => i.status === d.inctab) || {}).id; }
+  else if (d.range) S.range = d.range;
+  else if (d.rep) S.report = d.rep;
+  else if (d.admintab) S.adminTab = d.admintab;
+  else if (d.ask) S.chat.push(d.ask);
+  else if (d.act === 'notes') S.notesOpen = !S.notesOpen;
+  else if (d.act === 'nav') S.navOpen = !S.navOpen;
+  else return;
+  rerender();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('[data-inc],[data-rep]')) e.target.click(); });
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target.dataset.form;
+  if (f === 'ask') { const v = document.getElementById('ask').value.trim(); if (v) { S.chat.push(v.replace(/[<>&]/g, '')); rerender(); } }
+  if (f === 'login') location.hash = '#dashboard';
+});
+window.addEventListener('hashchange', () => { S.navOpen = false; render(); });
+window.addEventListener('resize', () => drawAll(performance.now()));
+
+// live clock (fixed sample start 14:32:07) + gentle feed motion
+const start = Date.now();
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+setInterval(() => {
+  const s = 14 * 3600 + 32 * 60 + 7 + Math.floor((Date.now() - start) / 1000);
+  const hh = String(Math.floor(s / 3600) % 24).padStart(2, '0'), mm = String(Math.floor(s / 60) % 60).padStart(2, '0'), ss = String(s % 60).padStart(2, '0');
+  document.querySelectorAll('[data-clock]').forEach(n => n.textContent = `${hh}:${mm}:${ss}`);
+  document.querySelectorAll('[data-clock-full]').forEach(n => n.textContent = `Thu 5 Nov · ${hh}:${mm}:${ss}`);
+  if (!reduce) drawAll(performance.now());
+}, 1000);
+
+render();
+</script>
+</body>
+</html>
