@@ -77,7 +77,7 @@ export default function Assistant() {
           <div className="flex-1 p-5 flex flex-col gap-[18px]">
             {history.length === 0 && (
               <div className="m-auto max-w-md text-center flex flex-col items-center gap-2.5 py-10">
-                <span className="w-11 h-11 rounded-xl grid place-items-center text-white bg-gradient-to-br from-accent to-[#3355c7]"><Bot size={22} /></span>
+                <span className="w-11 h-11 rounded-xl grid place-items-center bg-accent p-2"><img src="/logo-mark-light.png" alt="" className="w-full h-auto" /></span>
                 <p className="font-display font-semibold text-lg">What would you like to know?</p>
                 <p className="text-[13px] text-muted">
                   Ask a question below or pick one from “Try asking”. You’ll get a table of results and the query used to build it.
@@ -92,7 +92,7 @@ export default function Assistant() {
                 </p>
               ) : (
                 <div key={i} className="grid grid-cols-[30px_1fr] gap-3 max-w-full">
-                  <span className="w-[30px] h-[30px] rounded-lg grid place-items-center text-white bg-gradient-to-br from-accent to-[#3355c7]"><Bot size={16} /></span>
+                  <span className="w-[30px] h-[30px] rounded-lg grid place-items-center bg-accent p-1"><img src="/logo-mark-light.png" alt="" className="w-full h-auto" /></span>
                   {msg.error ? (
                     <p className="alert-banner alert-error">{msg.error}</p>
                   ) : (
@@ -124,7 +124,7 @@ export default function Assistant() {
                         <summary className="cursor-pointer text-xs text-muted inline-flex items-center gap-1.5 hover:text-ink">
                           <Database size={13} />Show the query · {msg.result.row_count} rows
                         </summary>
-                        <pre className="mt-2 font-mono text-xs bg-raised border border-line rounded-lg px-3 py-2.5 overflow-x-auto text-[#2846a8]">{msg.result.sql}</pre>
+                        <pre className="mt-2 font-mono text-xs bg-raised border border-line rounded-lg px-3 py-2.5 overflow-x-auto text-accent">{msg.result.sql}</pre>
                       </details>
                     </div>
                   )}

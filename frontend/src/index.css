@@ -15,7 +15,7 @@
   --ink-rgb: 17 24 39;        /* #111827 text */
   --ink-2-rgb: 71 84 103;     /* #475467 secondary */
   --muted-rgb: 107 119 137;   /* #6b7789 labels */
-  --accent-rgb: 47 95 224;    /* #2f5fe0 signal blue */
+  --accent-rgb: 2 68 32;      /* #024420 Iso Safe green (brand) */
   --crit-rgb: 220 59 54;      /* #dc3b36 */
   --warn-rgb: 199 119 0;      /* #c77700 */
   --info-rgb: 14 143 168;     /* #0e8fa8 */
@@ -71,7 +71,7 @@
   .btn:hover:not(:disabled) { border-color: #b8c3d1; background: var(--raised); }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn-primary:hover:not(:disabled) { background: #2550c4; border-color: #2550c4; }
+  .btn-primary:hover:not(:disabled) { background: #035c2c; border-color: #035c2c; }
   .btn-ghost { background: transparent; border-color: transparent; color: var(--ink-2); box-shadow: none; }
   .btn-ghost:hover:not(:disabled) { background: var(--raised); border-color: transparent; color: var(--ink); }
   .btn-danger { background: rgb(var(--crit-rgb) / 0.08); border-color: rgb(var(--crit-rgb) / 0.3); color: var(--crit); box-shadow: none; }
@@ -122,7 +122,7 @@
   .role-admin { background: rgb(var(--accent-rgb) / 0.1); color: var(--accent); }
   .role-operator { background: rgb(var(--info-rgb) / 0.1); color: var(--info); }
   .role-viewer { background: var(--raised); color: var(--ink-2); border: 1px solid var(--line); }
-  .avatar { width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 600; background: #e3eaff; color: #2846a8; flex: none; text-transform: uppercase; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 600; background: #e3efe7; color: #024420; flex: none; text-transform: uppercase; }
   .avatar-sm { width: 24px; height: 24px; font-size: 10.5px; }
   .plate { font-family: var(--font-mono); font-weight: 500; color: #111; background: #f1d36b; border: 1px solid #d8b84a; padding: 1px 6px; border-radius: 3px; font-size: 12px; letter-spacing: 0.04em; }
   .meter { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }

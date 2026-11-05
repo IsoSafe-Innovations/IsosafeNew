@@ -91,30 +91,28 @@ export default function Layout({ children }) {
       {navOpen && <div className="fixed inset-0 bg-ink/30 z-40 lg:hidden" onClick={() => setNavOpen(false)} />}
       <aside
         aria-label="Primary"
-        className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-[248px] lg:w-auto bg-panel border-r border-line flex flex-col transition-transform lg:translate-x-0 ${
+        className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-[248px] lg:w-auto bg-accent text-white flex flex-col transition-transform lg:translate-x-0 ${
           navOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         }`}
       >
-        <div className="flex items-center gap-2.5 px-[18px] pt-[18px] pb-4">
-          <div className="w-[30px] h-[30px] rounded-[7px] grid place-items-center text-white bg-gradient-to-br from-accent to-[#3355c7]">
-            <Shield size={16} />
+        <div className="flex items-center gap-3 px-[18px] pt-5 pb-5 border-b border-white/10">
+          <img src="/logo-mark-light.png" alt="" className="h-10 w-auto shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-display font-bold text-[17px] leading-tight tracking-[0.04em] uppercase">Iso Safe</div>
+            <div className="text-[10.5px] text-white/60 tracking-[0.14em] uppercase">Innovations</div>
           </div>
-          <div className="flex-1">
-            <div className="font-display font-bold text-[17px] leading-tight">Iso Safe</div>
-            <div className="text-[11px] text-muted">Video intelligence</div>
-          </div>
-          <button className="icon-btn lg:hidden" onClick={() => setNavOpen(false)} aria-label="Close navigation">
+          <button className="icon-btn !text-white/70 hover:!bg-white/10 hover:!text-white lg:hidden" onClick={() => setNavOpen(false)} aria-label="Close navigation">
             <X size={18} />
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2.5 py-1 flex flex-col gap-3.5">
+        <nav className="flex-1 overflow-y-auto px-2.5 py-4 flex flex-col gap-3.5">
           {NAV.map(({ group, items }) => {
             const visible = items.filter((n) => (!n.minRole || hasRole(n.minRole)) && !isHiddenInDemo(n.to));
             if (!visible.length) return null;
             return (
               <div key={group} className="flex flex-col gap-0.5">
-                <div className="text-[10.5px] uppercase tracking-[0.12em] text-muted px-2.5 pb-1">{group}</div>
+                <div className="text-[10.5px] uppercase tracking-[0.12em] text-white/45 px-2.5 pb-1">{group}</div>
                 {visible.map(({ to, label, icon: Icon, badge }) => {
                   const b = badge && badges[badge];
                   return (
@@ -123,8 +121,8 @@ export default function Layout({ children }) {
                       className={({ isActive }) =>
                         `relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-[13.5px] transition-colors ${
                           isActive
-                            ? 'bg-accent/[0.08] text-accent font-medium before:absolute before:-left-2.5 before:top-[7px] before:bottom-[7px] before:w-[3px] before:rounded-r before:bg-accent'
-                            : 'text-ink-2 hover:bg-raised hover:text-ink'
+                            ? 'bg-white text-accent font-medium shadow-sm'
+                            : 'text-white/75 hover:bg-white/10 hover:text-white'
                         }`
                       }
                     >
@@ -132,7 +130,7 @@ export default function Layout({ children }) {
                       {label}
                       {b && (
                         <span className={`ml-auto font-mono text-[11px] px-1.5 rounded-full ${
-                          b.tone === 'crit' ? 'bg-critical/10 text-critical' : 'bg-raised text-ink-2 border border-line'
+                          b.tone === 'crit' ? 'bg-critical text-white' : 'bg-white/15 text-white'
                         }`}>
                           {b.text}
                         </span>
@@ -145,35 +143,35 @@ export default function Layout({ children }) {
           })}
         </nav>
 
-        <div className="border-t border-line p-3 flex flex-col gap-3">
+        <div className="border-t border-white/10 p-3 flex flex-col gap-3">
           {agent ? (
             <div className="text-xs grid gap-1.5">
               <div className="flex justify-between">
-                <span className="flex items-center gap-2"><span className={`dot ${agent.online ? 'dot-ring' : 'dot-crit'}`} />Edge agent</span>
-                <span className="font-mono text-muted">
+                <span className="flex items-center gap-2"><span className={`dot ${agent.online ? '!bg-[#6ee7a4]' : 'dot-crit'}`} />Edge agent</span>
+                <span className="font-mono text-white/60">
                   {agent.agent_version || '—'}{agent.last_seen_ago != null ? ` · ${agent.last_seen_ago}s` : ''}
                 </span>
               </div>
               {agent.cpu != null && (
                 <>
-                  <div className="flex justify-between text-muted"><span>CPU</span><span className="font-mono">{agent.cpu}%</span></div>
-                  <div className="meter !h-1"><i style={{ width: `${Math.min(100, agent.cpu)}%` }} /></div>
+                  <div className="flex justify-between text-white/60"><span>CPU</span><span className="font-mono">{agent.cpu}%</span></div>
+                  <div className="meter !h-1 !bg-white/15"><i className="!bg-white" style={{ width: `${Math.min(100, agent.cpu)}%` }} /></div>
                 </>
               )}
             </div>
           ) : (
-            <div className="text-xs flex items-center gap-2 text-ink-2">
-              <span className={`dot ${health ? (systemOk ? 'dot-ring' : 'dot-crit') : 'dot-off'}`} />
+            <div className="text-xs flex items-center gap-2 text-white/80">
+              <span className={`dot ${health ? (systemOk ? '!bg-[#6ee7a4]' : 'dot-crit') : 'dot-off'}`} />
               {health ? (systemOk ? 'All services healthy' : 'Service degraded') : 'Checking services…'}
             </div>
           )}
           <div className="flex items-center gap-2.5">
-            <span className="avatar">{(user.email || '?').slice(0, 2)}</span>
+            <span className="avatar !bg-white/15 !text-white">{(user.email || '?').slice(0, 2)}</span>
             <div className="min-w-0 flex-1">
               <p className="text-[13px] truncate">{user.email}</p>
-              <p className="text-[11.5px] text-muted capitalize">{user.role}</p>
+              <p className="text-[11.5px] text-white/60 capitalize">{user.role}</p>
             </div>
-            <button onClick={logout} title="Sign out" aria-label="Sign out" className="icon-btn hover:!text-critical">
+            <button onClick={logout} title="Sign out" aria-label="Sign out" className="icon-btn !text-white/70 hover:!bg-white/10 hover:!text-white">
               <LogOut size={16} />
             </button>
           </div>
@@ -185,6 +183,7 @@ export default function Layout({ children }) {
           <button className="icon-btn lg:hidden" onClick={() => setNavOpen(true)} aria-label="Open navigation">
             <Menu size={18} />
           </button>
+          <img src="/logo-mark-green.png" alt="Iso Safe" className="h-7 w-auto lg:hidden" />
           <div className="text-[13px] text-muted whitespace-nowrap hidden sm:block">
             Iso Safe &nbsp;/&nbsp; <span className="text-ink font-medium">{title}</span>
           </div>

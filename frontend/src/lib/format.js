@@ -14,7 +14,7 @@ export const SEVERITY_STRIPE = {
 
 // Hex values for SVG/recharts, mirroring the tokens in index.css.
 export const CHART = {
-  accent: '#2f5fe0',
+  accent: '#0b6b3a',   // brand green, one step lighter so bars read on white
   crit: '#dc3b36',
   warn: '#c77700',
   info: '#0e8fa8',
@@ -31,7 +31,7 @@ export const CHART_TOOLTIP = {
     boxShadow: '0 4px 14px rgba(16,24,40,.08)', fontSize: 12,
   },
   labelStyle: { color: '#111827', fontWeight: 500 },
-  cursor: { fill: 'rgba(47,95,224,.06)' },
+  cursor: { fill: 'rgba(2,68,32,.06)' },
 };
 
 export const STATUS_LABELS = {
