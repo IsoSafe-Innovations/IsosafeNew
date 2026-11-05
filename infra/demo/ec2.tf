@@ -75,6 +75,11 @@ resource "aws_instance" "demo" {
   }
 
   lifecycle {
+    # The Elastic IP makes AWS report associate_public_ip_address=true, which
+    # differs from the configured false and would force a brand-new VM (wiping
+    # the database, .env, certificates and agent) on every `terraform apply`.
+    ignore_changes = [associate_public_ip_address]
+
     precondition {
       condition     = local.key_name != ""
       error_message = "Set either 'ssh_public_key' or 'key_name' so the VM can be reached for deploy and debugging."
