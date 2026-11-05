@@ -23,6 +23,10 @@ Set-Location $repoRoot
 
 # --- 1. Commit and push ------------------------------------------------------
 if (-not $SkipPush) {
+    $current = (git rev-parse --abbrev-ref HEAD).Trim()
+    if ($current -ne $Branch) {
+        throw "You are on '$current' but the server deploys '$Branch'. Merge into $Branch first (or pass -Branch $current to deploy this branch)."
+    }
     if (-not (git config user.email)) {
         git config user.email "tech@isosafe.com.ng"
         git config user.name "Iso Safe Innovations"
